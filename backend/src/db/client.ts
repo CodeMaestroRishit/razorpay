@@ -3,13 +3,28 @@ import { env } from "../config/env.js";
 
 const { Pool } = pg;
 
+// Local Docker Postgres doesn't speak TLS; a real Supabase host (direct
+// or pooler) requires it. `rejectUnauthorized: false` skips CA validation
+// rather than bundling Supabase's CA chain — acceptable for this build,
+// revisit before anything beyond a hackathon/demo depends on it.
+function sslFor(connectionString: string) {
+  const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
+  return isLocal ? undefined : { rejectUnauthorized: false };
+}
+
 // The pipeline's own connection — BYPASSRLS, equivalent to a Supabase
 // service-role client. This is the only pool that may write.
-export const servicePool = new Pool({ connectionString: env.serviceDatabaseUrl });
+export const servicePool = new Pool({
+  connectionString: env.serviceDatabaseUrl,
+  ssl: sslFor(env.serviceDatabaseUrl),
+});
 
 // RLS-enforced connection, for anything simulating a tenant-scoped,
 // frontend-facing read (never used for pipeline writes).
-export const appPool = new Pool({ connectionString: env.appDatabaseUrl });
+export const appPool = new Pool({
+  connectionString: env.appDatabaseUrl,
+  ssl: sslFor(env.appDatabaseUrl),
+});
 
 /**
  * Run `fn` against the app pool with RLS scoped to one merchant, in a

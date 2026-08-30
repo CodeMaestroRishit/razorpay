@@ -26,9 +26,17 @@ state validation, prompt-injection inertness).
   for why).
 - **Database:** Postgres, with the exact §6 schema and real Row-Level
   Security (`recovery_app` role, tenant-scoped; `recovery_service` bypasses
-  RLS the way a Supabase service-role key would). Runs against local
-  Postgres via Docker by default — swap the connection strings for a real
-  Supabase project whenever you have one; nothing else changes.
+  RLS the way a Supabase service-role key would). Ships with a real
+  Supabase project (`razorpay-revenue-recovery`, `ap-south-1`) — migrated
+  and seeded already. Local Postgres via Docker also works identically
+  (same migrations, same roles); switch by pointing `backend/.env` at
+  either.
+
+  Supabase's direct `db.<ref>.supabase.co` host is IPv6-only on the free
+  tier and may not resolve on every network — `backend/.env` connects via
+  the Supavisor pooler (`aws-0-ap-south-1.pooler.supabase.com:5432`,
+  session mode) instead, which session-mode `SET LOCAL`-based RLS (this
+  project's tenancy pattern) requires anyway.
 - **Frontend:** React + Vite + Tailwind + TanStack Query + Recharts.
 - **External services (Anthropic / Sarvam / Razorpay):** every adapter in
   `backend/src/adapters/` falls back to a deterministic mock when its API
@@ -36,6 +44,10 @@ state validation, prompt-injection inertness).
   accounts. Drop in real keys later — no code changes needed.
 
 ## Quickstart
+
+`backend/.env` isn't committed (it holds real Supabase credentials). On a
+fresh clone, either ask for that file, or point it at local Postgres
+instead — copy `backend/.env.example` to `backend/.env` and run:
 
 ```bash
 npm install                 # installs both workspaces
@@ -47,6 +59,10 @@ npm run seed                  # drives 50 synthetic events through the REAL pipe
 npm run dev:backend          # http://localhost:4000
 npm run dev:frontend         # http://localhost:5173 — paste the merchant UUID when prompted
 ```
+
+With the real `backend/.env` in place, skip `db:up`/`migrate` (already
+applied to Supabase) and go straight to `npm run seed` (creates a fresh
+merchant there) then the two `dev:*` commands.
 
 Run the backend test suite (guardrail engine, state machine, risk scoring):
 
