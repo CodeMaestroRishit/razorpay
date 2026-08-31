@@ -2,11 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { env } from "../config/env.js";
+import "dotenv/config";
 
 // Migrations run with a superuser-equivalent connection (the docker-compose
 // default user) since they create roles and grants that recovery_service
-// itself doesn't have privileges to create.
+// itself doesn't have privileges to create. Point MIGRATE_DATABASE_URL at
+// a cloud Postgres (e.g. Supabase's postgres user) to migrate that instead;
+// TLS is applied automatically for any non-localhost host.
 const bootstrapUrl =
   process.env.MIGRATE_DATABASE_URL ??
   "postgres://recovery:recovery@localhost:5432/revenue_recovery";
@@ -15,7 +17,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, "migrations");
 
 async function main() {
-  const client = new pg.Client({ connectionString: bootstrapUrl });
+  const isLocal = /localhost|127\.0\.0\.1/.test(bootstrapUrl);
+  const client = new pg.Client({
+    connectionString: bootstrapUrl,
+    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+  });
   await client.connect();
 
   await client.query(`

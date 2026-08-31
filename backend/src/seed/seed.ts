@@ -30,62 +30,118 @@ async function main() {
     [merchantId]
   );
 
+  // One customer has opted out and one is unreachable by email. Both are
+  // guardrail rejections the demo can point at (§17 Phase 8 asks for a
+  // visibly-handled failure case, not just a happy path).
   const customerIds: string[] = [];
-  for (const name of NAMES) {
+  for (const [i, name] of NAMES.entries()) {
+    const optedOut = i === 0;
+    const unreachable = i === 1;
     const { rows } = await servicePool.query<{ id: string }>(
-      `insert into customers (merchant_id, name, phone, email, language_pref) values ($1, $2, $3, $4, $5) returning id`,
-      [merchantId, name, `+91${9000000000 + Math.floor(Math.random() * 99999999)}`, `${name.split(" ")[0].toLowerCase()}@example.com`, pick(["en", "hi", "hinglish"])]
+      `insert into customers (merchant_id, name, phone, email, language_pref, contact_opt_out)
+       values ($1, $2, $3, $4, $5, $6) returning id`,
+      [
+        merchantId,
+        name,
+        `+91${9000000000 + Math.floor(Math.random() * 99999999)}`,
+        unreachable ? null : `${name.split(" ")[0].toLowerCase()}@example.com`,
+        pick(["en", "hi", "hinglish"]),
+        optedOut,
+      ]
     );
     customerIds.push(rows[0].id);
   }
 
   console.log("driving synthetic events through the real pipeline...");
-  let eventCount = 0;
+  // Volume matters for credibility: at the 20% holdout rate, 50 events
+  // leaves ~10 holdout cases, too few for the §11 incrementality figure to
+  // mean anything (computeFunnel flags exactly this). 120 puts the holdout
+  // arm comfortably over that bar.
+  const FAILED_SUBSCRIPTIONS = 55;
+  const ABANDONED_CHECKOUTS = 35;
+  const OVERDUE_INVOICES = 30;
 
-  // Failed subscriptions (payment_failed) — several retries to demonstrate
-  // both a recovery and a guardrail rejection (max_retry_count hit).
-  for (let i = 0; i < 20; i++) {
-    const customerId = pick(customerIds);
-    const amount = 50000 + Math.floor(Math.random() * 500000); // paise
-    const { rows: txRows } = await servicePool.query<{ id: string }>(
-      `insert into transactions (merchant_id, customer_id, amount, status, gateway_ref) values ($1, $2, $3, 'failed', $4) returning id`,
-      [merchantId, customerId, amount, `tx_${Date.now()}_${i}`]
-    );
-    await fireWebhook(merchantId, {
-      type: "payment_failed",
-      transaction_id: txRows[0].id,
-      customer_id: customerId,
-      amount,
-      failure_code: pick(FAILURE_CODES),
+  // Build the work first, then run it with bounded concurrency. Each event
+  // is independent, and the pipeline makes a dozen-plus round trips — run
+  // serially against a remote database that is minutes, not seconds.
+  const jobs: Array<() => Promise<void>> = [];
+
+  // Failed subscriptions. The first two carry suspected_fraud, which the
+  // guardrail refuses to automate at all (§10) — a visibly-handled failure
+  // case in the timeline, as §17 Phase 8 asks for.
+  for (let i = 0; i < FAILED_SUBSCRIPTIONS; i++) {
+    jobs.push(async () => {
+      const customerId = pick(customerIds);
+      const amount = 50000 + Math.floor(Math.random() * 500000); // paise
+      const { rows } = await servicePool.query<{ id: string }>(
+        `insert into transactions (merchant_id, customer_id, amount, status, gateway_ref)
+         values ($1, $2, $3, 'failed', $4) returning id`,
+        [merchantId, customerId, amount, `tx_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 8)}`]
+      );
+      await fireWebhook(merchantId, {
+        type: "payment_failed",
+        transaction_id: rows[0].id,
+        customer_id: customerId,
+        amount,
+        failure_code: i < 2 ? "suspected_fraud" : pick(FAILURE_CODES),
+      });
     });
-    eventCount++;
   }
 
-  // Checkout abandonment
-  for (let i = 0; i < 15; i++) {
-    const customerId = pick(customerIds);
-    const amount = 100000 + Math.floor(Math.random() * 800000);
-    await fireWebhook(merchantId, { type: "checkout_abandoned", customer_id: customerId, amount });
-    eventCount++;
+  for (let i = 0; i < ABANDONED_CHECKOUTS; i++) {
+    jobs.push(async () => {
+      const customerId = pick(customerIds);
+      const amount = 100000 + Math.floor(Math.random() * 800000);
+      await fireWebhook(merchantId, { type: "checkout_abandoned", customer_id: customerId, amount });
+    });
   }
 
-  // B2B receivables (invoice overdue)
-  for (let i = 0; i < 15; i++) {
-    const customerId = pick(customerIds);
-    const amount = 500000 + Math.floor(Math.random() * 5000000);
-    const { rows: invRows } = await servicePool.query<{ id: string }>(
-      `insert into invoices (merchant_id, customer_id, amount, due_date, status) values ($1, $2, $3, now() - interval '5 days', 'overdue') returning id`,
-      [merchantId, customerId, amount]
-    );
-    await fireWebhook(merchantId, { type: "invoice_overdue", invoice_id: invRows[0].id, customer_id: customerId, amount });
-    eventCount++;
+  for (let i = 0; i < OVERDUE_INVOICES; i++) {
+    jobs.push(async () => {
+      const customerId = pick(customerIds);
+      const amount = 500000 + Math.floor(Math.random() * 5000000);
+      const { rows } = await servicePool.query<{ id: string }>(
+        `insert into invoices (merchant_id, customer_id, amount, due_date, status)
+         values ($1, $2, $3, now() - interval '5 days', 'overdue') returning id`,
+        [merchantId, customerId, amount]
+      );
+      await fireWebhook(merchantId, {
+        type: "invoice_overdue",
+        invoice_id: rows[0].id,
+        customer_id: customerId,
+        amount,
+      });
+    });
   }
 
+  await runWithConcurrency(jobs, 8);
   await simulateOrganicRecovery(merchantId);
 
-  console.log(`seeded merchant ${merchantId} with ${eventCount} events run through the pipeline`);
+  console.log(`seeded merchant ${merchantId} with ${jobs.length} events run through the pipeline`);
   console.log(`use header  x-merchant-id: ${merchantId}  when calling the API`);
   await servicePool.end();
+}
+
+/**
+ * Bounded-concurrency runner. The limit is matched to the connection pool
+ * (`max: 8` in db/client.ts) — going wider just queues on connection
+ * acquisition and risks exhausting Supabase's pooler quota.
+ */
+async function runWithConcurrency(jobs: Array<() => Promise<void>>, limit: number) {
+  let next = 0;
+  let done = 0;
+  const workers = Array.from({ length: Math.min(limit, jobs.length) }, async () => {
+    while (next < jobs.length) {
+      const job = jobs[next++];
+      try {
+        await job();
+      } catch (err) {
+        console.error("seed job failed", err);
+      }
+      if (++done % 25 === 0) console.log(`  ${done}/${jobs.length} events processed`);
+    }
+  });
+  await Promise.all(workers);
 }
 
 /**

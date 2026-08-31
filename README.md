@@ -13,11 +13,54 @@ Detect → Score (deterministic) → Root cause (AI) → Recommend (AI)
 The one property everything else is built around: **the AI never gets a code
 path to a payment or messaging provider.** It returns a structured
 `AiRecommendation` object; [`backend/src/pipeline/guardrail.ts`](./backend/src/pipeline/guardrail.ts)
-is the only thing that turns a proposal into permission to act, and it's
-plain, synchronous, unit-tested TypeScript with no model call inside it —
-see `backend/test/guardrail.test.ts` for the 13 cases that pin its behavior
-(allowlist enforcement, retry/amount/cooldown limits, confidence floor,
-state validation, prompt-injection inertness).
+is the only thing that turns a proposal into permission to act.
+
+## The guardrail engine
+
+Three properties make it the actual security boundary rather than a
+decorative one:
+
+1. **No model call, ever.** Nothing in the file is async or network-bound.
+   Every fact it needs is passed in (`GuardrailFacts`, gathered in one
+   query by [`guardrailFacts.ts`](./backend/src/pipeline/guardrailFacts.ts)),
+   so the engine is a pure function — same inputs, same verdict, fully
+   testable with no database.
+2. **It does not trust its input.** `AiRecommendation` is a compile-time
+   fiction; at runtime the object came from a model. Rule 1 re-validates the
+   structure against a Zod schema, and `.strict()` means a model that
+   invents `{"execute_now": true}` is refused rather than having the field
+   silently ignored.
+3. **It returns a normalized action, not the model's object.** An approved
+   verdict carries a *rebuilt* action — unknown fields dropped, amount
+   defaulted and clamped, message truncated. The executor never sees raw
+   model output.
+
+Rules run in a fixed order, fail-closed, and every rejection names the rule
+that fired so the audit trail and UI can show a merchant exactly what
+stopped an action:
+
+| # | Rule | What it enforces |
+|---|---|---|
+| 1 | `schema` | Structural validation; unknown action types, extra fields, negative/NaN/fractional amounts, out-of-range confidence |
+| 2 | `holdout` | A holdout case gets no intervention, so the §11 baseline stays a real measurement |
+| 3 | `terminal_state` | Nothing acts on an already-recovered or closed case |
+| 4 | `suspected_fraud` | Fraud is an unconditional escalation (§10) — outranks any confident AI proposal |
+| 5 | `customer_opt_out` | Blocks contact once a customer opts out; still allows winding the case down |
+| 6 | `action_allowlist` | Per-playbook action enum (§4 "AI hallucinates an action") |
+| 7 | `state_machine` | The action must be legal from the case's current state |
+| 8 | `action_budget` | Total-actions cap, so alternating action types can't dodge the retry budget |
+| 9 | `retry_budget` | `max_retry_count` (§4 "infinite retry loops") |
+| 10 | `retry_interval` | `min_retry_interval_hours` — 3 allowed retries is not 3 retries in one minute (§10) |
+| 11 | `campaign_duration` | A case cannot be worked forever |
+| 12 | `amount` | Never more than the original transaction, never over the merchant cap |
+| 13 | `channel` | Channel must be merchant-enabled *and* one the customer is reachable on |
+| 14 | `cooldown` | Per-channel cooldown (§4 "repeated customer messaging") |
+| 15 | `confidence_floor` | Low-confidence proposals escalate instead of acting on a guess |
+
+44 unit tests in [`backend/test/guardrail.test.ts`](./backend/test/guardrail.test.ts)
+pin this behavior, including rule *ordering* (the most fundamental
+violation is the one reported) and the fact that customer-controlled text
+can never change what executes.
 
 ## Stack
 
@@ -83,10 +126,10 @@ optional.
 | Postgres schema + RLS (tenant isolation) | Real — verified with two seeded merchants; wrong/missing `x-merchant-id` returns 400/empty, never another tenant's rows |
 | Idempotency keys | Real |
 | Case state machine | Real |
-| Holdout group + §11 incrementality funnel | Real — derived from case state, not a partially-populated side table |
+| Holdout group + §11 incrementality funnel | Real — derived from case state (in-flight cases stay in the denominator), and the funnel reports its own sample sizes plus a flag when the holdout arm is too small to support the claim |
 | Reasoning LLM (root cause + recommendation) | Real Anthropic call if `ANTHROPIC_API_KEY` set; deterministic mock otherwise |
 | Sarvam (STT/TTS/Hinglish generation) | Real call if `SARVAM_API_KEY` set; English-template fallback otherwise (flagged as `degraded: true`, per §8) |
-| Razorpay payment retry | Real test-mode API if keys set; seeded-random mock otherwise |
+| Razorpay payment retry | Real test-mode API for genuine `pay_...` references; synthetic seed data routes to the mock even when keys are set, so demo data never hits the live payments API |
 | Messaging send | Always a logged no-op (§17 Phase 4 — swap `adapters/messaging.ts` for a real provider when ready) |
 | Live voice calls, Temporal, event broker | Not built — explicitly out of scope per §15/§19 |
 
@@ -108,12 +151,37 @@ frontend/src/
   features/timeline   Agent Timeline — doubles as the Audit Trail (§12)
 ```
 
+## Deploying
+
+The two halves deploy differently, and it matters:
+
+- **Frontend → Vercel.** Root directory `frontend`, build `npm run build`,
+  output `dist`. Set `VITE_API_BASE_URL` to the backend's origin **plus
+  `/api`** (e.g. `https://your-backend.up.railway.app/api`) — it's read at
+  build time, so redeploy after changing it.
+- **Backend → Railway or Render, not Vercel.** The webhook handler responds
+  `202` and then keeps processing the pipeline after the response is sent;
+  a serverless function would be frozen or killed at return, silently
+  dropping that work. It needs a persistent process. Root directory
+  `backend`, build `npm run build`, start `npm start`.
+
+On the backend host set `SERVICE_DATABASE_URL`, `APP_DATABASE_URL`, and
+`CORS_ORIGINS` (your Vercel URL), plus whichever API keys you're using.
+Never commit `backend/.env` — it holds live database credentials.
+
+The Razorpay webhook URL is then
+`https://<your-backend-host>/webhooks/razorpay`, and the secret you enter
+in the Razorpay dashboard goes in `RAZORPAY_WEBHOOK_SECRET`.
+
 ## Known gaps (next up)
 
-- Frontend hardcodes `/api` (relies on the Vite dev proxy) — needs an env
-  var for a deployed backend URL.
 - `promise_to_pay_broken` re-checks (§10) aren't wired to a scheduler yet —
   the pipeline handles the event type if it arrives, but nothing polls
   `promises_to_pay` for broken promises on its own.
 - No auth layer — `x-merchant-id` header stands in for what a real session
   would derive; swap for real auth before this goes anywhere near prod.
+- Frontend bundle is one 566 kB chunk (Recharts dominates). Fine for a
+  dashboard behind auth; code-split before it faces the open internet.
+- Sarvam's live path is written against the documented REST shape but has
+  only been exercised in fallback mode — verify the response parsing
+  against a real key before relying on the Hinglish output.

@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { servicePool } from "../db/client.js";
-import type { ActionType, PolicyRules, Playbook } from "../types/domain.js";
+import type { ActionType, Channel, PolicyRules, Playbook } from "../types/domain.js";
 
 /**
  * Default limits per playbook, straight from §10. These are the values
@@ -17,6 +17,7 @@ export const DEFAULT_POLICY_RULES: Record<Playbook, PolicyRules> = {
     cooldown_hours: 24,
     amount_cap: 0,
     allowed_action_types: ["retry_payment", "send_message", "schedule_retry", "escalate_to_human", "close_case"],
+    allowed_channels: ["email", "sms", "whatsapp"],
   },
   checkout_abandonment: {
     max_retry_count: 0, // "one message per abandonment, no repeat nagging"
@@ -25,6 +26,7 @@ export const DEFAULT_POLICY_RULES: Record<Playbook, PolicyRules> = {
     cooldown_hours: 48,
     amount_cap: 0,
     allowed_action_types: ["send_message", "escalate_to_human", "close_case"],
+    allowed_channels: ["email", "sms"],
   },
   b2b_receivables: {
     max_retry_count: 2, // escalate after 2 broken promises
@@ -33,6 +35,9 @@ export const DEFAULT_POLICY_RULES: Record<Playbook, PolicyRules> = {
     cooldown_hours: 72,
     amount_cap: 0,
     allowed_action_types: ["send_message", "schedule_retry", "escalate_to_human", "close_case"],
+    // B2B collections stay on email — a phone dunning call to a business
+    // contact is a compliance conversation, not an automation default.
+    allowed_channels: ["email"],
   },
 };
 
@@ -69,6 +74,9 @@ export async function getPolicyRules(merchantId: string, playbook: Playbook, cli
         break;
       case "allowed_action_types":
         merged.allowed_action_types = row.params.value as ActionType[];
+        break;
+      case "allowed_channels":
+        merged.allowed_channels = row.params.value as Channel[];
         break;
     }
   }

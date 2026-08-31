@@ -12,9 +12,21 @@ function sslFor(connectionString: string) {
   return isLocal ? undefined : { rejectUnauthorized: false };
 }
 
+// Supabase's free-tier pooler caps concurrent client connections, and we
+// open two pools against it. Keeping each modest leaves headroom for the
+// dashboard, psql, and the Supabase UI rather than exhausting the quota
+// under a burst of webhook traffic. `idleTimeoutMillis` returns idle
+// connections to the pooler instead of holding them open indefinitely.
+const POOL_TUNING = {
+  max: 8,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+};
+
 // The pipeline's own connection — BYPASSRLS, equivalent to a Supabase
 // service-role client. This is the only pool that may write.
 export const servicePool = new Pool({
+  ...POOL_TUNING,
   connectionString: env.serviceDatabaseUrl,
   ssl: sslFor(env.serviceDatabaseUrl),
 });
@@ -22,9 +34,16 @@ export const servicePool = new Pool({
 // RLS-enforced connection, for anything simulating a tenant-scoped,
 // frontend-facing read (never used for pipeline writes).
 export const appPool = new Pool({
+  ...POOL_TUNING,
   connectionString: env.appDatabaseUrl,
   ssl: sslFor(env.appDatabaseUrl),
 });
+
+// A pool emits 'error' for problems on IDLE clients (e.g. the pooler
+// dropping a connection). Without a listener, Node treats it as an
+// unhandled 'error' event and crashes the whole backend.
+servicePool.on("error", (err) => console.error("[db] idle client error (service pool)", err));
+appPool.on("error", (err) => console.error("[db] idle client error (app pool)", err));
 
 /**
  * Run `fn` against the app pool with RLS scoped to one merchant, in a

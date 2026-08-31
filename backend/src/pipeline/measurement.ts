@@ -1,35 +1,39 @@
 import { servicePool } from "../db/client.js";
 
 /**
- * Records one experiment_results row when a case reaches a terminal
- * outcome — this is what powers the holdout-vs-treated comparison in
- * §11, the "would this have recovered anyway?" answer.
+ * Appends one `experiment_results` row when a case reaches a genuinely
+ * TERMINAL outcome — recovered, or closed without recovery.
+ *
+ * Deliberately not called on escalation: an escalated case is still open
+ * (a human may yet recover it), and recording it as "not_recovered" would
+ * bake a pessimistic bias into the historical record. Equally, a case
+ * still in flight is not recorded at all — it has no outcome yet.
+ *
+ * This table is the append-only historical record of settled outcomes.
+ * The live funnel (`computeFunnel`) deliberately reads `recovery_cases`
+ * instead, because it must count in-flight cases in its denominator —
+ * see the note there.
+ *
+ * One statement, not three: the campaign lookup and amount join happen
+ * inside an INSERT ... SELECT rather than as separate round trips.
  */
-export async function recordExperimentOutcome(caseId: string, recovered: boolean): Promise<void> {
-  const { rows } = await servicePool.query<{ campaign_id: string | null; amount: number; holdout: boolean }>(
-    `select rc.merchant_id, coalesce(t.amount, i.amount, 0) as amount, rc.holdout
-     from recovery_cases rc
-     join revenue_risk_events rre on rre.id = rc.event_id
-     left join transactions t on t.id = rre.transaction_id
-     left join invoices i on i.id = rre.invoice_id
-     where rc.id = $1`,
-    [caseId]
-  );
-  const row = rows[0] as unknown as { merchant_id: string; amount: number; holdout: boolean } | undefined;
-  if (!row) return;
-
-  // Demo simplification: one implicit campaign per merchant rather than
-  // requiring an explicit recovery_campaigns row per case. A real
-  // multi-campaign UI would resolve caseId -> campaign_id directly.
-  const { rows: campaignRows } = await servicePool.query<{ id: string }>(
-    `select id from recovery_campaigns where merchant_id = $1 order by started_at desc limit 1`,
-    [row.merchant_id]
-  );
-  if (campaignRows.length === 0) return;
-
+export async function recordExperimentOutcome(caseId: string, recovered = true): Promise<void> {
   await servicePool.query(
-    `insert into experiment_results (campaign_id, holdout_group, outcome, amount) values ($1, $2, $3, $4)`,
-    [campaignRows[0].id, row.holdout, recovered ? "recovered" : "not_recovered", row.amount]
+    `insert into experiment_results (campaign_id, holdout_group, outcome, amount)
+     select camp.id, rc.holdout, $2, coalesce(t.amount, i.amount, 0)
+       from recovery_cases rc
+       join revenue_risk_events rre on rre.id = rc.event_id
+       left join transactions t on t.id = rre.transaction_id
+       left join invoices i on i.id = rre.invoice_id
+       -- Demo simplification: newest campaign per merchant. A real
+       -- multi-campaign build resolves case -> campaign directly.
+       join lateral (
+         select c.id from recovery_campaigns c
+          where c.merchant_id = rc.merchant_id
+          order by c.started_at desc limit 1
+       ) camp on true
+      where rc.id = $1`,
+    [caseId, recovered ? "recovered" : "not_recovered"]
   );
 }
 
@@ -39,7 +43,24 @@ export interface RecoveryFunnel {
   incrementalRecovered: number;
   recoveryRateTreated: number;
   recoveryRateHoldout: number;
+  /** Sample sizes behind the two rates — reported so the lift can be judged, not just read. */
+  treatedCases: number;
+  holdoutCases: number;
+  /**
+   * False when the holdout arm is too small for its rate to mean much. The
+   * incremental figure is still computed, but a consumer should present it
+   * as indicative rather than measured.
+   */
+  holdoutSampleSufficient: boolean;
 }
+
+/**
+ * Below this many holdout cases, a single case flipping moves the holdout
+ * rate by whole percentage points, and "0 of 7 recovered" is
+ * indistinguishable from a 20% true rate. Claiming a precise incremental
+ * number off that is the §11 trap wearing a lab coat.
+ */
+const MIN_HOLDOUT_FOR_CONFIDENCE = 20;
 
 /**
  * §11's funnel: at risk -> gross recovered -> incremental (holdout-adjusted).
@@ -100,5 +121,14 @@ export async function computeFunnel(merchantId: string): Promise<RecoveryFunnel>
     : 0;
   const incrementalRecovered = grossRecovered * liftShare;
 
-  return { revenueAtRisk, grossRecovered, incrementalRecovered, recoveryRateTreated, recoveryRateHoldout };
+  return {
+    revenueAtRisk,
+    grossRecovered,
+    incrementalRecovered,
+    recoveryRateTreated,
+    recoveryRateHoldout,
+    treatedCases: treatedTotal,
+    holdoutCases: holdoutTotal,
+    holdoutSampleSufficient: holdoutTotal >= MIN_HOLDOUT_FOR_CONFIDENCE,
+  };
 }

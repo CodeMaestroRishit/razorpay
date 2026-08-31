@@ -3,6 +3,7 @@ import { servicePool } from "../db/client.js";
 import type { CaseContext, CaseState, Playbook, RevenueRiskEvent } from "../types/domain.js";
 import { assertTransition, canTransition } from "../state/stateMachine.js";
 import { assignHoldout } from "./holdout.js";
+import { recordExperimentOutcome } from "./measurement.js";
 
 export function playbookForEvent(eventType: RevenueRiskEvent["type"]): Playbook {
   switch (eventType) {
@@ -26,10 +27,19 @@ export async function openCase(
   const playbook = playbookForEvent(event.type);
   const holdout = assignHoldout(event.id);
 
-  const { rows } = await db.query<{ id: string; opened_at: string }>(
-    `insert into recovery_cases (event_id, merchant_id, customer_id, playbook, state, holdout)
-     values ($1, $2, $3, $4, 'detected', $5)
-     returning id, opened_at`,
+  // Resolve the provider's payment reference in the same statement that
+  // opens the case — a retry must be issued against `gateway_ref`, never
+  // against an internal id.
+  const { rows } = await db.query<{ id: string; opened_at: string; gateway_ref: string | null }>(
+    `with new_case as (
+       insert into recovery_cases (event_id, merchant_id, customer_id, playbook, state, holdout)
+       values ($1, $2, $3, $4, 'detected', $5)
+       returning id, opened_at, event_id
+     )
+     select nc.id, nc.opened_at, t.gateway_ref
+       from new_case nc
+       join revenue_risk_events rre on rre.id = nc.event_id
+       left join transactions t on t.id = rre.transaction_id`,
     [event.id, event.merchant_id, event.customer_id, playbook, holdout]
   );
 
@@ -42,6 +52,7 @@ export async function openCase(
     retry_count: 0,
     opened_at: rows[0].opened_at,
     original_amount: originalAmount,
+    gateway_ref: rows[0].gateway_ref,
   };
 }
 
@@ -64,6 +75,10 @@ export async function observeExternalRecovery(caseId: string, client?: PoolClien
   const current = rows[0]?.state;
   if (!current || !canTransition(current, "recovered")) return false;
   await transitionCase(caseId, current, "recovered", client);
+  // A terminal outcome, so it belongs in the experiment record — and for
+  // a holdout case this is the ONLY way one ever gets recorded, which is
+  // precisely what makes the §11 baseline a measurement.
+  await recordExperimentOutcome(caseId);
   return true;
 }
 
@@ -74,8 +89,4 @@ export async function getRetryCount(caseId: string, client?: PoolClient): Promis
     [caseId]
   );
   return Number(rows[0]?.count ?? 0);
-}
-
-export function campaignAgeDays(openedAt: string): number {
-  return (Date.now() - new Date(openedAt).getTime()) / (1000 * 3600 * 24);
 }

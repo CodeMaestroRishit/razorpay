@@ -14,8 +14,10 @@ const STAGE_LABELS: Record<string, string> = {
 
 function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }) {
   const [open, setOpen] = useState(false);
-  const isGuardrailReject =
-    entry.stage === "guardrail" && (entry.output as { approved?: boolean } | null)?.approved === false;
+  const output = entry.output as { approved?: boolean; rule?: string; reason?: string } | null;
+  const isGuardrail = entry.stage === "guardrail";
+  const isGuardrailReject = isGuardrail && output?.approved === false;
+  const isGuardrailPass = isGuardrail && output?.approved === true;
 
   return (
     <li className="relative pb-8 pl-10">
@@ -34,9 +36,17 @@ function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }
         </div>
       </div>
       {isGuardrailReject && (
-        <div className="mt-1 text-sm text-[#d03b3b]">
-          rejected: {(entry.output as { reason?: string }).reason}
+        <div className="mt-1.5">
+          {/* The rule name is the point: a merchant can see exactly which
+              limit stopped the action, not just that something did. */}
+          <span className="inline-flex items-center rounded-md bg-[#FBEAEA] px-2 py-0.5 font-mono text-[11px] font-semibold text-[#d03b3b]">
+            {output?.rule ?? "rejected"}
+          </span>
+          <div className="mt-1 text-sm text-[#d03b3b]">{output?.reason}</div>
         </div>
+      )}
+      {isGuardrailPass && (
+        <div className="mt-1 text-sm text-[#0ca30c]">approved — all policy checks passed</div>
       )}
       <button onClick={() => setOpen((o) => !o)} className="mt-1 text-xs font-medium text-brand-dark hover:underline">
         {open ? "hide details" : "show input / output"}

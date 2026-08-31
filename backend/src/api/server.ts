@@ -6,7 +6,17 @@ import { dashboardRouter } from "./routes/dashboard.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 
 const app = express();
-app.use(cors());
+
+// Wide-open CORS is fine for local dev but wrong for a deployed backend.
+// Set CORS_ORIGINS to a comma-separated allowlist (e.g. the Vercel URL);
+// unset keeps the permissive dev behavior.
+app.use(
+  cors(
+    env.corsOrigins.length > 0
+      ? { origin: env.corsOrigins, allowedHeaders: ["Content-Type", "x-merchant-id"] }
+      : {}
+  )
+);
 app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));

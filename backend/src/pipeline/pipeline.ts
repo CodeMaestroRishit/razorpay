@@ -1,9 +1,10 @@
 import { servicePool } from "../db/client.js";
 import type { CaseContext, CaseState, RevenueRiskEvent } from "../types/domain.js";
 import { scoreEvent } from "./detection.js";
-import { openCase, transitionCase, getRetryCount, campaignAgeDays } from "./caseManager.js";
+import { openCase, transitionCase, getRetryCount } from "./caseManager.js";
 import { getPolicyRules } from "../policy/rules.js";
-import { evaluateGuardrail, deterministicFallbackAction, getActiveCooldown } from "./guardrail.js";
+import { evaluateGuardrail, deterministicFallbackAction } from "./guardrail.js";
+import { gatherGuardrailFacts } from "./guardrailFacts.js";
 import { executeAction } from "./executor.js";
 import { recordDecision, timedStage } from "./audit.js";
 import { createReasoningAdapter } from "../adapters/llm.js";
@@ -87,10 +88,18 @@ export async function runPipelineForEvent(eventId: string): Promise<void> {
   );
 
   caseCtx = await moveTo(caseCtx, "recommending");
-  caseCtx = { ...caseCtx, retry_count: await getRetryCount(caseCtx.case_id) };
+
+  // Policy is fetched once and reused for the fallback, the guardrail, and
+  // the executor. It was previously re-queried up to three times per run —
+  // invisible against local Postgres, real latency against Supabase.
+  const [policy, retryCount] = await Promise.all([
+    getPolicyRules(caseCtx.merchant_id, caseCtx.playbook),
+    getRetryCount(caseCtx.case_id),
+  ]);
+  caseCtx = { ...caseCtx, retry_count: retryCount };
 
   const recommendation = rootCause.model_used === "unavailable"
-    ? deterministicFallbackAction(caseCtx, await getPolicyRules(caseCtx.merchant_id, caseCtx.playbook))
+    ? deterministicFallbackAction(caseCtx, policy)
     : await timedStage(
         caseCtx.case_id,
         "recommend",
@@ -99,27 +108,32 @@ export async function runPipelineForEvent(eventId: string): Promise<void> {
         { model: "reasoning-llm" }
       ).catch(async (err) => {
         await recordDecision({ caseId: caseCtx.case_id, stage: "recommend", input: { rootCause }, output: { error: String(err) } });
-        return deterministicFallbackAction(caseCtx, await getPolicyRules(caseCtx.merchant_id, caseCtx.playbook));
+        return deterministicFallbackAction(caseCtx, policy);
       });
 
   // Stage: Guardrail — the one function in this whole loop that can say no.
-  const policy = await getPolicyRules(caseCtx.merchant_id, caseCtx.playbook);
-  const cooldownActiveUntil = recommendation.action_type === "send_message" && recommendation.channel
-    ? await getActiveCooldown(caseCtx.case_id, recommendation.channel)
-    : null;
-  const verdict = evaluateGuardrail({
-    recommendation,
-    caseCtx,
-    policy,
-    cooldownActiveUntil,
-    campaignAgeDays: campaignAgeDays(caseCtx.opened_at),
+  // Facts come from a single query; the engine itself is pure and sync.
+  const facts = await gatherGuardrailFacts(caseCtx, recommendation.channel);
+  const verdict = evaluateGuardrail({ recommendation, caseCtx, policy, facts });
+  await recordDecision({
+    caseId: caseCtx.case_id,
+    stage: "guardrail",
+    input: { recommendation, policy, facts },
+    output: verdict,
   });
-  await recordDecision({ caseId: caseCtx.case_id, stage: "guardrail", input: { recommendation, policy }, output: verdict });
 
   if (!verdict.approved) {
     caseCtx = await moveTo(caseCtx, "escalated");
-    await servicePool.query(`insert into escalations (case_id, reason) values ($1, $2)`, [caseCtx.case_id, verdict.reason]);
-    await recordDecision({ caseId: caseCtx.case_id, stage: "stop_or_escalate", input: { verdict }, output: { action: "escalated" } });
+    await servicePool.query(`insert into escalations (case_id, reason) values ($1, $2)`, [
+      caseCtx.case_id,
+      `[${verdict.rule}] ${verdict.reason}`,
+    ]);
+    await recordDecision({
+      caseId: caseCtx.case_id,
+      stage: "stop_or_escalate",
+      input: { verdict },
+      output: { action: "escalated", rule: verdict.rule },
+    });
     return;
   }
 
@@ -161,7 +175,10 @@ export async function runPipelineForEvent(eventId: string): Promise<void> {
   caseCtx = await moveTo(caseCtx, outcomeState);
   await recordDecision({ caseId: caseCtx.case_id, stage: "measure", input: { execution }, output: { outcomeState } });
 
-  if (outcomeState === "recovered" || outcomeState === "escalated") {
-    await recordExperimentOutcome(caseCtx.case_id, outcomeState === "recovered");
+  // Only genuinely terminal outcomes are appended to the experiment
+  // record. An escalated case is still open — a human may yet recover it —
+  // so recording it now would bias the historical record pessimistically.
+  if (outcomeState === "recovered") {
+    await recordExperimentOutcome(caseCtx.case_id, true);
   }
 }

@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/components/ui/badge.tsx","./src/components/ui/stattile.tsx","./src/features/cases/casestable.tsx","./src/features/dashboard/dashboard.tsx","./src/features/timeline/timeline.tsx","./src/lib/api.ts"],"version":"5.9.3"}

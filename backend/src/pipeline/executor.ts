@@ -41,7 +41,10 @@ export async function executeAction(params: {
   switch (params.action.action_type) {
     case "retry_payment": {
       const result = await params.razorpay.retryPayment({
-        transactionId: params.caseCtx.case_id,
+        // The provider's own payment reference — never an internal id.
+        // Null for a case with no underlying payment (abandoned checkout,
+        // overdue invoice); the adapter treats that as unretryable.
+        gatewayRef: params.caseCtx.gateway_ref,
         amount: params.action.amount ?? params.caseCtx.original_amount,
         idempotencyKey,
       });

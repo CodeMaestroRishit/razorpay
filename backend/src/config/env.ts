@@ -7,6 +7,13 @@ function required(name: string, fallback: string): string {
 export const env = {
   port: Number(process.env.PORT ?? 4000),
 
+  // Comma-separated allowlist of browser origins permitted to call the
+  // API. Empty = permissive (dev). Set this on a deployed backend.
+  corsOrigins: (process.env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean),
+
   // Service connection: bypasses RLS, used by the pipeline itself.
   serviceDatabaseUrl: required(
     "SERVICE_DATABASE_URL",

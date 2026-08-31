@@ -22,6 +22,8 @@ export type ActionType =
   | "escalate_to_human"
   | "close_case";
 
+export type Channel = "sms" | "email" | "voice" | "whatsapp";
+
 export interface RevenueRiskEvent {
   id: string;
   merchant_id: string;
@@ -53,7 +55,7 @@ export interface RootCauseResult {
  */
 export interface AiRecommendation {
   action_type: ActionType;
-  channel?: "sms" | "email" | "voice" | "whatsapp";
+  channel?: Channel;
   tone?: string;
   message_draft?: string;
   language?: string;
@@ -69,11 +71,31 @@ export interface PolicyRules {
   cooldown_hours: number;
   amount_cap: number; // paise; 0 = no cap beyond the original transaction amount
   allowed_action_types: ActionType[];
+  allowed_channels: Channel[];
+}
+
+/**
+ * Everything the guardrail engine needs to know about the world, read
+ * fresh from Postgres by `gatherGuardrailFacts` before evaluation. Passing
+ * these in (rather than letting the engine query) is what keeps
+ * `evaluateGuardrail` pure, synchronous, and testable without a database.
+ */
+export interface GuardrailFacts {
+  /** Injected rather than read from the clock, so time-based rules are testable. */
+  now: Date;
+  cooldownActiveUntil: Date | null;
+  lastRetryAt: Date | null;
+  campaignAgeDays: number;
+  actionsTakenOnCase: number;
+  customerOptedOut: boolean;
+  reachableChannels: Channel[];
+  rootCause: string | null;
 }
 
 export type GuardrailVerdict =
   | { approved: true; action: AiRecommendation }
-  | { approved: false; reason: string; fallback?: AiRecommendation };
+  /** `rule` names the specific check that fired — surfaced in the audit trail and UI. */
+  | { approved: false; rule: string; reason: string; fallback?: AiRecommendation };
 
 export interface CaseContext {
   case_id: string;
@@ -84,4 +106,11 @@ export interface CaseContext {
   retry_count: number;
   opened_at: string;
   original_amount: number;
+  /**
+   * The payment provider's own reference for the failed charge (Razorpay
+   * `pay_...`), or null for a case with no underlying payment (an
+   * abandoned checkout, an overdue invoice). This — never `case_id` — is
+   * what a retry is issued against.
+   */
+  gateway_ref: string | null;
 }

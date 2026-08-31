@@ -23,8 +23,8 @@ export function Dashboard({ merchantId }: { merchantId: string }) {
 
   const f = funnel.data;
   const rateData = [
-    { group: "Treated (agent-worked)", rate: Math.round(f.recoveryRateTreated * 1000) / 10 },
-    { group: "Holdout (no agent)", rate: Math.round(f.recoveryRateHoldout * 1000) / 10 },
+    { group: "Treated (agent-worked)", rate: Math.round(f.recoveryRateTreated * 1000) / 10, n: f.treatedCases },
+    { group: "Holdout (no agent)", rate: Math.round(f.recoveryRateHoldout * 1000) / 10, n: f.holdoutCases },
   ];
 
   return (
@@ -47,7 +47,11 @@ export function Dashboard({ merchantId }: { merchantId: string }) {
         <StatTile
           label="Incremental Recovered"
           value={formatInr(f.incrementalRecovered)}
-          sublabel="gross minus the holdout baseline"
+          sublabel={
+            f.holdoutSampleSufficient
+              ? "gross minus the holdout baseline"
+              : `indicative only — holdout n=${f.holdoutCases} is too small to be conclusive`
+          }
           accent
         />
         <StatTile
@@ -63,6 +67,13 @@ export function Dashboard({ merchantId }: { merchantId: string }) {
           The gap between these two bars is the agent's actual, measured effect — everything else is uplift the
           business would have gotten anyway.
         </p>
+        {!f.holdoutSampleSufficient && (
+          <p className="mt-3 rounded-lg bg-[#FFF6E0] px-3 py-2 text-sm text-[#8a6300]">
+            <strong>Read this as directional, not proven.</strong> The holdout arm has {f.holdoutCases} cases — at
+            that size a single case changes the rate by several points, so the gap below is not yet statistically
+            meaningful. It needs ~{20} holdout cases before the incremental figure is worth quoting.
+          </p>
+        )}
         <div className="mt-6 h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rateData} layout="vertical" margin={{ left: 24, right: 40 }} barCategoryGap="35%">
@@ -78,10 +89,16 @@ export function Dashboard({ merchantId }: { merchantId: string }) {
               <YAxis
                 type="category"
                 dataKey="group"
-                width={170}
+                width={190}
                 tick={{ fill: "#0b0b0b", fontSize: 13 }}
                 axisLine={false}
                 tickLine={false}
+                // The rate is meaningless without its denominator, so the
+                // two travel together rather than the n living in a footnote.
+                tickFormatter={(group: string) => {
+                  const row = rateData.find((r) => r.group === group);
+                  return row ? `${group}  n=${row.n}` : group;
+                }}
               />
               <Tooltip
                 cursor={{ fill: "rgba(10,37,64,0.04)" }}

@@ -1,4 +1,10 @@
-const BASE = "/api";
+/**
+ * In dev this stays "/api" and Vite's proxy forwards to localhost:4000.
+ * For a deployed frontend (Vercel) talking to a separately-hosted backend
+ * (Railway/Render), set VITE_API_BASE_URL to that backend's origin at
+ * build time — e.g. https://your-backend.up.railway.app/api
+ */
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export interface Funnel {
   revenueAtRisk: number;
@@ -6,6 +12,9 @@ export interface Funnel {
   incrementalRecovered: number;
   recoveryRateTreated: number;
   recoveryRateHoldout: number;
+  treatedCases: number;
+  holdoutCases: number;
+  holdoutSampleSufficient: boolean;
 }
 
 export interface Summary {
