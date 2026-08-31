@@ -16,7 +16,9 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
         sync: false
       - key: SARVAM_API_KEY
         sync: false

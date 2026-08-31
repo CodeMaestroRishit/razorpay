@@ -29,7 +29,11 @@ export const env = {
   // adapter falls back to a deterministic mock (see adapters/*.ts and
   // §4/§8/§14 of the architecture doc, which explicitly call this out
   // as the designed degraded-mode behavior, not a hack).
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  // Overridable since model availability varies by account; see
+  // adapters/llm.ts for what this needs to support (structured JSON output
+  // via chat.completions.parse + zodResponseFormat).
+  openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.5",
   sarvamApiKey: process.env.SARVAM_API_KEY,
   razorpayKeyId: process.env.RAZORPAY_KEY_ID,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,

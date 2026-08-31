@@ -81,7 +81,7 @@ can never change what executes.
   session mode) instead, which session-mode `SET LOCAL`-based RLS (this
   project's tenancy pattern) requires anyway.
 - **Frontend:** React + Vite + Tailwind + TanStack Query + Recharts.
-- **External services (Anthropic / Sarvam / Razorpay):** every adapter in
+- **External services (OpenAI / Sarvam / Razorpay):** every adapter in
   `backend/src/adapters/` falls back to a deterministic mock when its API
   key is unset, so the full pipeline runs end-to-end with zero external
   accounts. Drop in real keys later — no code changes needed.
@@ -127,7 +127,7 @@ optional.
 | Idempotency keys | Real |
 | Case state machine | Real |
 | Holdout group + §11 incrementality funnel | Real — derived from case state (in-flight cases stay in the denominator), and the funnel reports its own sample sizes plus a flag when the holdout arm is too small to support the claim |
-| Reasoning LLM (root cause + recommendation) | Real Anthropic call if `ANTHROPIC_API_KEY` set; deterministic mock otherwise |
+| Reasoning LLM (root cause + recommendation) | Real OpenAI call (structured JSON output) if `OPENAI_API_KEY` set; deterministic mock otherwise. Model defaults to `gpt-5.5`, overridable via `OPENAI_MODEL` |
 | Sarvam (STT/TTS/Hinglish generation) | Real call if `SARVAM_API_KEY` set; English-template fallback otherwise (flagged as `degraded: true`, per §8) |
 | Razorpay payment retry | Real test-mode API for genuine `pay_...` references; synthetic seed data routes to the mock even when keys are set, so demo data never hits the live payments API |
 | Messaging send | Always a logged no-op (§17 Phase 4 — swap `adapters/messaging.ts` for a real provider when ready) |
