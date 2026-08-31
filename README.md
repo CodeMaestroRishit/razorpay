@@ -155,23 +155,41 @@ frontend/src/
 
 The two halves deploy differently, and it matters:
 
+- **Backend → Render, as a Web Service (not a serverless/static option).**
+  The webhook handler responds `202` and then keeps processing the
+  pipeline after the response is sent; anything serverless would be frozen
+  or killed at return, silently dropping that work — a Web Service is a
+  persistent process, which is what this needs.
+
+  [`render.yaml`](./render.yaml) at the repo root is a Blueprint: in the
+  Render dashboard, **New → Blueprint**, point it at this repo, and it
+  fills in root directory (`backend`), build (`npm install && npm run
+  build`), start (`npm start`), and the health check (`/health`)
+  automatically. It'll prompt you for the env vars marked `sync: false` —
+  paste in `SERVICE_DATABASE_URL` and `APP_DATABASE_URL` from your
+  `backend/.env`, plus whichever API keys you're using. Leave
+  `CORS_ORIGINS` blank until the frontend is deployed (see below), then
+  come back and set it.
+
+  Without a blueprint: New → Web Service → root directory `backend`,
+  build `npm install && npm run build`, start `npm start`.
+
 - **Frontend → Vercel.** Root directory `frontend`, build `npm run build`,
-  output `dist`. Set `VITE_API_BASE_URL` to the backend's origin **plus
-  `/api`** (e.g. `https://your-backend.up.railway.app/api`) — it's read at
-  build time, so redeploy after changing it.
-- **Backend → Railway or Render, not Vercel.** The webhook handler responds
-  `202` and then keeps processing the pipeline after the response is sent;
-  a serverless function would be frozen or killed at return, silently
-  dropping that work. It needs a persistent process. Root directory
-  `backend`, build `npm run build`, start `npm start`.
+  output `dist`. Set `VITE_API_BASE_URL` to the Render service's URL
+  **plus `/api`** (e.g. `https://razorpay-revenue-recovery-backend.onrender.com/api`)
+  — it's read at build time, so redeploy after changing it.
 
-On the backend host set `SERVICE_DATABASE_URL`, `APP_DATABASE_URL`, and
-`CORS_ORIGINS` (your Vercel URL), plus whichever API keys you're using.
-Never commit `backend/.env` — it holds live database credentials.
+Once both are up, go back to the Render service's env vars and set
+`CORS_ORIGINS` to the Vercel URL, so the backend actually accepts requests
+from it. Never commit `backend/.env` — it holds live database credentials.
 
-The Razorpay webhook URL is then
-`https://<your-backend-host>/webhooks/razorpay`, and the secret you enter
-in the Razorpay dashboard goes in `RAZORPAY_WEBHOOK_SECRET`.
+Render's free tier spins the service down after 15 minutes idle and takes
+~30–60s to wake on the next request — expect that delay on a cold demo
+load, or upgrade the plan if the buildathon judging can't tolerate it.
+
+The Razorpay webhook URL is then the Render service's URL —
+`https://<your-service>.onrender.com/webhooks/razorpay` — and the secret
+you enter in the Razorpay dashboard goes in `RAZORPAY_WEBHOOK_SECRET`.
 
 ## Known gaps (next up)
 
