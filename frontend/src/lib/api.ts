@@ -4,7 +4,7 @@
  * (Railway/Render), set VITE_API_BASE_URL to that backend's origin at
  * build time — e.g. https://your-backend.up.railway.app/api
  */
-const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
+export const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export interface Merchant {
   id: string;

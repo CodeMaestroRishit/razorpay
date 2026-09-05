@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, type Merchant } from "../../lib/api.js";
+import { api, BASE, type Merchant } from "../../lib/api.js";
 
 /**
  * Replaces the old "paste a merchant UUID" form.
@@ -26,7 +26,15 @@ export function MerchantPicker({ onSelect }: { onSelect: (merchantId: string) =>
 
         {merchants.isError && (
           <div className="mt-6 rounded-lg bg-[#FBEAEA] px-4 py-3 text-sm text-[#d03b3b]">
-            Couldn't reach the backend. Is it running on port 4000?
+            <div>Couldn't reach the backend at <code className="rounded bg-white/60 px-1 font-mono">{BASE}/merchants</code>.</div>
+            <div className="mt-1 text-xs text-[#d03b3b]/80">
+              {merchants.error instanceof Error ? merchants.error.message : "Unknown error"}
+            </div>
+            <div className="mt-2 text-xs text-[#d03b3b]/80">
+              {BASE.startsWith("/")
+                ? "This is a relative path — it only works if Vite's dev proxy or your host forwards /api to the backend. If you're on localhost, make sure the backend is running (npm run dev in backend/) on port 4000."
+                : "This is deployed to a fixed origin — check that the backend is actually up there, and that its CORS_ORIGINS setting includes this site's URL."}
+            </div>
           </div>
         )}
 
