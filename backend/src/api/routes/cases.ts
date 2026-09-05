@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { withMerchantContext } from "../../db/client.js";
+import { requireMerchantId } from "../merchantContext.js";
 
 export const casesRouter = Router();
 
@@ -9,11 +10,6 @@ export const casesRouter = Router();
  * tenant isolation (§13), not just documents it. `x-merchant-id` stands
  * in for what a real auth layer would derive from a session/JWT.
  */
-function requireMerchantId(req: { header: (name: string) => string | undefined }): string {
-  const merchantId = req.header("x-merchant-id");
-  if (!merchantId) throw Object.assign(new Error("x-merchant-id header required"), { status: 400 });
-  return merchantId;
-}
 
 casesRouter.get("/", async (req, res, next) => {
   try {

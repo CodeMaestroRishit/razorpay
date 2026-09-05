@@ -1,12 +1,20 @@
 import { env } from "../config/env.js";
 
 /**
- * Sarvam's job per §8: STT (Saaras v3, codemix), TTS (Bulbul v3), Hinglish
- * chat-completion generation, and text-lid — language-facing tasks only,
- * never reasoning. Root cause / recommendation stay on the reasoning LLM
- * (adapters/llm.ts); this adapter only translates an already-decided
- * English message into natural Hinglish/regional language, or transcribes
- * a customer's spoken reply.
+ * Sarvam's job per §8: STT (Saaras v3, codemix), TTS (Bulbul v3), native
+ * -language generation, and text-lid — language-facing tasks only, never
+ * reasoning. Root cause / recommendation stay on the reasoning LLM
+ * (adapters/llm.ts); this adapter only renders an already-decided English
+ * message in the customer's own language, or transcribes their reply.
+ *
+ * NOT Hinglish-only. Sarvam covers the major Indian languages — Hindi,
+ * Bengali, Tamil, Telugu, Marathi, Gujarati, Kannada, Malayalam, Punjabi,
+ * Odia and others, plus code-mixed speech. `language` below is passed
+ * through to Sarvam rather than being matched against a hardcoded list,
+ * so a customer whose `language_pref` is 'ta' gets Tamil without any code
+ * change here. Hinglish is one supported case, not the ceiling: a
+ * merchant recovering revenue in Chennai and one in Kolkata should each
+ * be dunned in the language their customer actually reads.
  *
  * No SARVAM_API_KEY -> falls back to English templates, exactly as §8
  * and §4 specify for a Sarvam outage: "flag the case as degraded mode",
@@ -21,12 +29,18 @@ export interface SarvamAdapter {
 const SARVAM_BASE_URL = "https://api.sarvam.ai";
 
 /**
- * The `language` argument nominally carries an ISO-ish code (§8's
- * `language_pref` column stores "en"/"hi"/"hinglish"), but it can also
- * carry the reasoning LLM's free-text guess if a caller ever passes that
- * through unchecked. Defense in depth: recognize the common ways
- * "English" gets spelled before deciding whether translation is needed at
- * all, rather than only matching the exact string "en".
+ * The `language` argument carries whatever `customers.language_pref`
+ * holds — an ISO code ('hi', 'ta', 'bn', 'mr', …), 'hinglish', or any
+ * other Sarvam-supported value. It is deliberately NOT validated against
+ * a fixed list here: adding a language should be a data change, not a
+ * code change.
+ *
+ * The only thing worth special-casing is English, because that is the
+ * one value meaning "no localization needed" — the draft is already
+ * English. Everything else goes to Sarvam. This set exists because the
+ * value can also arrive as a model's free-text guess ("English" rather
+ * than "en"), which previously slipped past an exact match and triggered
+ * a pointless, failing translation of already-English text.
  */
 const ENGLISH_ALIASES = new Set(["en", "eng", "english", "en-us", "en-in", "en-gb"]);
 function isEnglish(language: string): boolean {

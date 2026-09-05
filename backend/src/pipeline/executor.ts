@@ -118,9 +118,12 @@ export async function executeAction(params: {
     }
 
     case "close_case": {
-      await db.query(`update recovery_cases set state = 'closed_unrecovered', closed_at = now() where id = $1`, [
-        params.caseCtx.case_id,
-      ]);
+      // Deliberately does NOT write `state` here. The executor's job is to
+      // perform the action and record it; the case's own state transition
+      // belongs to the pipeline, which routes every move through the state
+      // machine. Writing state directly here previously bypassed
+      // assertTransition and left the row contradicting the pipeline's
+      // subsequent (and equally unchecked) transition.
       await db.query(
         `insert into recovery_actions (case_id, action_type, proposed_by, status, payload)
          values ($1, 'close_case', 'ai', 'executed', $2)`,

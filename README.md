@@ -191,13 +191,40 @@ The Razorpay webhook URL is then the Render service's URL —
 `https://<your-service>.onrender.com/webhooks/razorpay` — and the secret
 you enter in the Razorpay dashboard goes in `RAZORPAY_WEBHOOK_SECRET`.
 
+## Closing the loop (the sweeper)
+
+§5's loop has a "continue" arrow back to the top. Without something
+driving it the pipeline is one-shot: a case reaches `retry_scheduled` and
+is never touched again, which makes `max_retry_count` and
+`min_retry_interval_hours` unreachable — a second attempt never happens.
+
+`POST /internal/sweep` (authenticated with `INGEST_API_KEY`) is what
+continues cases:
+
+- resumes cases whose retry interval and cooldown have elapsed, sending
+  them back through the **decision** stage so the guardrail re-evaluates
+  against current facts;
+- converts promises-to-pay past their date into `promise_to_pay_broken`
+  events, which then enter the pipeline like any other signal.
+
+Point a Render Cron Job at it (hourly is plenty). Each invocation is
+batch-capped because every resumed case costs a model call.
+
+```bash
+curl -X POST "$BACKEND/internal/sweep?limit=25" -H "x-ingest-key: $INGEST_API_KEY"
+# {"examined":5,"resumed":5,"skipped":0,"errors":0,"brokenPromises":0}
+```
+
 ## Known gaps (next up)
 
-- `promise_to_pay_broken` re-checks (§10) aren't wired to a scheduler yet —
-  the pipeline handles the event type if it arrives, but nothing polls
-  `promises_to_pay` for broken promises on its own.
+- Voice recovery is text-only in practice: Sarvam STT/TTS adapters exist
+  and are wired, but the demo path uses pre-recorded/simulated snippets
+  per §8's own recommendation, and the live STT call has not been
+  exercised against a real key.
 - No auth layer — `x-merchant-id` header stands in for what a real session
   would derive; swap for real auth before this goes anywhere near prod.
+- The rate limiter is per-process and in-memory; behind multiple replicas
+  it becomes per-replica. Move to Redis if this ever scales out.
 - Frontend bundle is one 566 kB chunk (Recharts dominates). Fine for a
   dashboard behind auth; code-split before it faces the open internet.
 - Sarvam's live path is written against the documented REST shape but has

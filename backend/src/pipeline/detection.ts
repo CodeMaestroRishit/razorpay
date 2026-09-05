@@ -10,20 +10,28 @@ import type { RevenueRiskEvent } from "../types/domain.js";
  */
 export async function normalizeWebhookEvent(webhookEventId: string, client?: PoolClient): Promise<string | null> {
   const db = client ?? servicePool;
-  const { rows } = await db.query<{ id: string; provider: string; payload: Record<string, unknown>; processed: boolean }>(
-    "select id, provider, payload, processed from webhook_events where id = $1",
+
+  // Claim the row atomically instead of reading `processed` and then
+  // writing it (§4 "Webhook duplication"). A check-then-act pair lets two
+  // concurrent deliveries of the same event both observe processed=false,
+  // both normalize it, and produce two cases — and therefore two rounds of
+  // real actions — for one real-world event. The conditional UPDATE means
+  // exactly one caller can win.
+  const { rows } = await db.query<{ payload: Record<string, unknown> }>(
+    `update webhook_events set processed = true
+      where id = $1 and processed = false
+      returning payload`,
     [webhookEventId]
   );
   const webhook = rows[0];
-  if (!webhook || webhook.processed) return null; // §4 "Webhook duplication"
+  if (!webhook) return null; // already claimed, or no such row
 
   const eventType = mapProviderEventType(webhook.payload);
-  if (!eventType) {
-    await db.query("update webhook_events set processed = true where id = $1", [webhookEventId]);
-    return null;
-  }
+  if (!eventType) return null; // already marked processed by the claim above
 
   const merchantId = webhook.payload.merchant_id as string;
+  if (!merchantId) return null;
+
   const { rows: inserted } = await db.query<{ id: string }>(
     `insert into revenue_risk_events (source_event_id, merchant_id, type, transaction_id, invoice_id, customer_id, payload)
      values ($1, $2, $3, $4, $5, $6, $7)
@@ -38,7 +46,6 @@ export async function normalizeWebhookEvent(webhookEventId: string, client?: Poo
       JSON.stringify(webhook.payload),
     ]
   );
-  await db.query("update webhook_events set processed = true where id = $1", [webhookEventId]);
   return inserted[0].id;
 }
 

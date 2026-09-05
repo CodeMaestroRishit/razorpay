@@ -65,18 +65,21 @@ export function parseRazorpayEvent(body: unknown): ParsedRazorpayEvent | null {
  */
 export async function ingestRazorpayEvent(webhookEventId: string, client?: PoolClient): Promise<string | null> {
   const db = client ?? servicePool;
-  const { rows } = await db.query<{ payload: unknown; processed: boolean }>(
-    "select payload, processed from webhook_events where id = $1",
+
+  // Atomic claim, not check-then-act — see normalizeWebhookEvent for why
+  // (§4 "Webhook duplication"): two concurrent deliveries of one event
+  // must not both produce a case and a round of real actions.
+  const { rows } = await db.query<{ payload: unknown }>(
+    `update webhook_events set processed = true
+      where id = $1 and processed = false
+      returning payload`,
     [webhookEventId]
   );
   const webhook = rows[0];
-  if (!webhook || webhook.processed) return null; // §4 "Webhook duplication"
+  if (!webhook) return null; // already claimed, or no such row
 
   const parsed = parseRazorpayEvent(webhook.payload);
-  if (!parsed || !parsed.gatewayRef) {
-    await db.query("update webhook_events set processed = true where id = $1", [webhookEventId]);
-    return null;
-  }
+  if (!parsed || !parsed.gatewayRef) return null;
 
   const merchantId = await resolveMerchant(parsed.accountId, db);
   let riskEventId: string | null = null;
@@ -88,8 +91,7 @@ export async function ingestRazorpayEvent(webhookEventId: string, client?: PoolC
   }
   // Other subscribed event types (payment.authorized, etc.) are stored
   // but intentionally not acted on yet — see README "known gaps".
-
-  await db.query("update webhook_events set processed = true where id = $1", [webhookEventId]);
+  // `processed` was already set by the claim above.
   return riskEventId;
 }
 

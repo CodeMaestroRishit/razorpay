@@ -1,11 +1,11 @@
 import { servicePool } from "../db/client.js";
-import type { CaseContext, CaseState, RevenueRiskEvent } from "../types/domain.js";
+import type { ActionType, CaseContext, CaseState, RevenueRiskEvent, RootCauseResult } from "../types/domain.js";
 import { scoreEvent } from "./detection.js";
 import { openCase, transitionCase, getRetryCount } from "./caseManager.js";
 import { getPolicyRules } from "../policy/rules.js";
 import { evaluateGuardrail, deterministicFallbackAction } from "./guardrail.js";
 import { gatherGuardrailFacts } from "./guardrailFacts.js";
-import { executeAction } from "./executor.js";
+import { executeAction, type ExecutionResult } from "./executor.js";
 import { recordDecision, timedStage } from "./audit.js";
 import { createReasoningAdapter } from "../adapters/llm.js";
 import { createSarvamAdapter } from "../adapters/sarvam.js";
@@ -34,6 +34,38 @@ const messaging = createMessagingAdapter();
 async function moveTo(caseCtx: CaseContext, to: CaseState): Promise<CaseContext> {
   await transitionCase(caseCtx.case_id, caseCtx.state, to);
   return { ...caseCtx, state: to };
+}
+
+/**
+ * What the case's state should be after an action ran. Kept as a pure
+ * function so the mapping is testable in isolation — it decides where a
+ * case lands, which is the difference between a recovery being counted
+ * and not.
+ *
+ * An action that did NOT execute (deduped by the idempotency check) must
+ * not advance the case as though it had; it goes back to retry_scheduled
+ * so a later run can legitimately retry it.
+ */
+export function outcomeStateFor(
+  actionType: ActionType,
+  execution: { executed: boolean; detail: Record<string, unknown> }
+): "recovered" | "retry_scheduled" | "escalated" | "closed_unrecovered" {
+  if (!execution.executed) return "retry_scheduled";
+
+  switch (actionType) {
+    case "retry_payment":
+      // Only a confirmed capture counts as recovery. 'pending' is an
+      // UNKNOWN outcome (§4 "payment gateway timeout"), never a success —
+      // the case stays open for reconciliation.
+      return execution.detail.status === "succeeded" ? "recovered" : "retry_scheduled";
+    case "escalate_to_human":
+      return "escalated";
+    case "close_case":
+      return "closed_unrecovered";
+    case "send_message":
+    case "schedule_retry":
+      return "retry_scheduled";
+  }
 }
 
 export async function runPipelineForEvent(eventId: string): Promise<void> {
@@ -88,6 +120,26 @@ export async function runPipelineForEvent(eventId: string): Promise<void> {
   );
 
   caseCtx = await moveTo(caseCtx, "recommending");
+  await runDecisionCycle(caseCtx, event, rootCause);
+}
+
+/**
+ * Decide → guard → act → measure, for a case already in 'recommending'.
+ *
+ * Split out from `runPipelineForEvent` so a case can go round the loop
+ * more than once (§5's "continue" branch). The first pass arrives here
+ * from a webhook; later passes arrive from the sweeper, which resumes
+ * cases whose retry interval or cooldown has elapsed. Detection and
+ * root-cause analysis are NOT repeated — the diagnosis of why a payment
+ * failed doesn't change between attempts, and re-running it would burn a
+ * model call per sweep for no new information.
+ */
+export async function runDecisionCycle(
+  initialCaseCtx: CaseContext,
+  event: RevenueRiskEvent,
+  rootCause: RootCauseResult
+): Promise<void> {
+  let caseCtx = initialCaseCtx;
 
   // Policy is fetched once and reused for the fallback, the guardrail, and
   // the executor. It was previously re-queried up to three times per run —
@@ -147,6 +199,11 @@ export async function runPipelineForEvent(eventId: string): Promise<void> {
   );
   const customer = customerRows[0] ?? { phone: null, email: null, language_pref: "en" };
 
+  // An exception here (provider SDK throwing, network stack failing) must
+  // not strand the case: without this catch it would sit in 'contacting'
+  // forever, invisible to the pipeline and to any later retry, with its
+  // idempotency key already claimed. Treated as a non-execution so the
+  // case falls back to retry_scheduled and stays workable.
   const execution = await timedStage(
     caseCtx.case_id,
     "execute",
@@ -161,19 +218,25 @@ export async function runPipelineForEvent(eventId: string): Promise<void> {
         sarvam,
         customerContact: customer,
       })
-  );
+  ).catch(async (err): Promise<ExecutionResult> => {
+    await recordDecision({
+      caseId: caseCtx.case_id,
+      stage: "execute",
+      input: { action: verdict.action },
+      output: { error: String(err) },
+    });
+    return { executed: false, detail: { error: String(err) } };
+  });
 
   // Stage: Observe result + Measure
-  let outcomeState: "recovered" | "retry_scheduled" | "escalated" = "retry_scheduled";
-  if (verdict.action.action_type === "retry_payment") {
-    outcomeState = execution.detail.status === "succeeded" ? "recovered" : "retry_scheduled";
-  } else if (verdict.action.action_type === "escalate_to_human") {
-    outcomeState = "escalated";
-  } else if (verdict.action.action_type === "send_message" || verdict.action.action_type === "schedule_retry") {
-    outcomeState = "retry_scheduled";
-  }
+  const outcomeState = outcomeStateFor(verdict.action.action_type, execution);
   caseCtx = await moveTo(caseCtx, outcomeState);
-  await recordDecision({ caseId: caseCtx.case_id, stage: "measure", input: { execution }, output: { outcomeState } });
+  await recordDecision({
+    caseId: caseCtx.case_id,
+    stage: "measure",
+    input: { execution },
+    output: { outcomeState, executed: execution.executed, skippedReason: execution.skippedReason },
+  });
 
   // Only genuinely terminal outcomes are appended to the experiment
   // record. An escalated case is still open — a human may yet recover it —

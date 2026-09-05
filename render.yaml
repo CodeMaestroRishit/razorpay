@@ -10,6 +10,14 @@ services:
     envVars:
       - key: PORT
         value: 4000
+      # Makes auth fail closed — see backend/src/webhooks/auth.ts.
+      - key: NODE_ENV
+        value: production
+      # Required: gates POST /webhooks/synthetic and POST /internal/sweep.
+      - key: INGEST_API_KEY
+        generateValue: true
+      - key: WEBHOOK_RATE_LIMIT_PER_MIN
+        value: 120
       - key: SERVICE_DATABASE_URL
         sync: false
       - key: APP_DATABASE_URL

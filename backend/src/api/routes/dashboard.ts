@@ -1,14 +1,13 @@
 import { Router } from "express";
 import { computeFunnel } from "../../pipeline/measurement.js";
 import { withMerchantContext } from "../../db/client.js";
+import { requireMerchantId } from "../merchantContext.js";
 
 export const dashboardRouter = Router();
 
 dashboardRouter.get("/funnel", async (req, res, next) => {
   try {
-    const merchantId = req.header("x-merchant-id");
-    if (!merchantId) return res.status(400).json({ error: "x-merchant-id header required" });
-    const funnel = await computeFunnel(merchantId);
+    const funnel = await computeFunnel(requireMerchantId(req));
     res.json(funnel);
   } catch (err) {
     next(err);
@@ -17,9 +16,7 @@ dashboardRouter.get("/funnel", async (req, res, next) => {
 
 dashboardRouter.get("/summary", async (req, res, next) => {
   try {
-    const merchantId = req.header("x-merchant-id");
-    if (!merchantId) return res.status(400).json({ error: "x-merchant-id header required" });
-    const summary = await withMerchantContext(merchantId, (client) =>
+    const summary = await withMerchantContext(requireMerchantId(req), (client) =>
       client.query(
         `select
            count(*) filter (where state not in ('recovered','closed_unrecovered')) as active_cases,

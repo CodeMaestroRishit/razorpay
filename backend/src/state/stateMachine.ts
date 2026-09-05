@@ -14,17 +14,35 @@ const TRANSITIONS: Record<CaseState, CaseState[]> = {
   diagnosing: ["recommending"],
   recommending: ["awaiting_approval", "escalated"],
   awaiting_approval: ["contacting", "escalated"],
-  contacting: ["recovered", "retry_scheduled", "escalated"],
+  // 'closed_unrecovered' covers a guardrail-approved close_case action,
+  // which executes from 'contacting' like any other action.
+  contacting: ["recovered", "retry_scheduled", "escalated", "closed_unrecovered"],
+  // 'recommending' is §5's "continue" arrow: the sweeper wakes a case
+  // whose interval has elapsed and sends it back through the DECISION
+  // stage, not straight to acting. There is deliberately no
+  // retry_scheduled -> contacting edge: 'contacting' must only ever be
+  // reached via 'awaiting_approval', which is to say only after the
+  // guardrail has approved this specific attempt. Allowing a case to
+  // re-enter 'contacting' directly would let a second action run on a
+  // stale approval.
   // 'recovered' here is the customer paying while a retry is still
   // pending — a success webhook can always land on an open case.
-  retry_scheduled: ["contacting", "escalated", "closed_unrecovered", "recovered"],
+  retry_scheduled: ["recommending", "escalated", "closed_unrecovered", "recovered"],
   recovered: [],
   escalated: ["closed_unrecovered", "recovered"],
   closed_unrecovered: [],
 };
 
+/** Every state, derived from the transition table so the two cannot drift. */
+export const ALL_STATES = Object.keys(TRANSITIONS) as CaseState[];
+
 export function canTransition(from: CaseState, to: CaseState): boolean {
   return TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+/** The states from which `to` is reachable in one step. */
+export function statesThatCanReach(to: CaseState): CaseState[] {
+  return ALL_STATES.filter((from) => canTransition(from, to));
 }
 
 export class IllegalTransitionError extends Error {

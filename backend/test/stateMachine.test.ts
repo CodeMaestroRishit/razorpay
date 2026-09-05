@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canTransition, assertTransition, IllegalTransitionError } from "../src/state/stateMachine.js";
+import { canTransition, assertTransition, IllegalTransitionError, ALL_STATES } from "../src/state/stateMachine.js";
 
 describe("case state machine (§10)", () => {
   it("allows the documented happy path", () => {
@@ -29,7 +29,18 @@ describe("case state machine (§10)", () => {
     expect(() => assertTransition("recovered", "contacting")).toThrow(IllegalTransitionError);
   });
 
-  it("allows retry_scheduled to loop back to contacting", () => {
-    expect(canTransition("retry_scheduled", "contacting")).toBe(true);
+  it("loops a scheduled retry back through the DECISION stage, not straight to acting", () => {
+    // §5's "continue" arrow. The sweeper wakes the case and it must be
+    // re-decided — fresh facts, fresh guardrail evaluation.
+    expect(canTransition("retry_scheduled", "recommending")).toBe(true);
+  });
+
+  it("never lets a case reach 'contacting' except via guardrail approval", () => {
+    // 'awaiting_approval' is the state the guardrail's approval produces,
+    // so it must be the ONLY way into 'contacting'. Any other edge would
+    // let a second action execute on a stale approval — an action taken
+    // without a matching, current authorization.
+    const entryPoints = ALL_STATES.filter((s) => canTransition(s, "contacting"));
+    expect(entryPoints).toEqual(["awaiting_approval"]);
   });
 });

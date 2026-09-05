@@ -14,6 +14,15 @@ import { observeExternalRecovery } from "../pipeline/caseManager.js";
 const FAILURE_CODES = ["insufficient_funds", "card_expired", "bank_decline"];
 const NAMES = ["Aarav Sharma", "Priya Patel", "Rohan Mehta", "Ananya Iyer", "Vikram Rao", "Sneha Gupta", "Karan Singh", "Divya Nair"];
 
+/**
+ * Sarvam covers the major Indian languages, so the seeded book of
+ * business looks like a real Indian merchant's: a Tamil customer in
+ * Chennai and a Bengali one in Kolkata each get dunned in their own
+ * language, not a single Hinglish default. Nothing in the pipeline is
+ * keyed to this list — it's passed straight through to Sarvam.
+ */
+const LANGUAGES = ["en", "hi", "hinglish", "ta", "bn", "mr", "te", "gu", "kn", "ml"];
+
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -45,7 +54,7 @@ async function main() {
         name,
         `+91${9000000000 + Math.floor(Math.random() * 99999999)}`,
         unreachable ? null : `${name.split(" ")[0].toLowerCase()}@example.com`,
-        pick(["en", "hi", "hinglish"]),
+        pick(LANGUAGES),
         optedOut,
       ]
     );

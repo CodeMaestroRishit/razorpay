@@ -5,8 +5,8 @@ import "dotenv/config";
 // would pass the empty string straight through instead of the default.
 // This treats "unset" and "blank" the same, which is what every caller
 // below actually wants.
-function withDefault(name: string, fallback: string): string {
-  const value = process.env[name];
+export function withDefault(name: string, fallback: string, source: NodeJS.ProcessEnv = process.env): string {
+  const value = source[name];
   return value && value.length > 0 ? value : fallback;
 }
 
@@ -44,4 +44,25 @@ export const env = {
   razorpayKeyId: process.env.RAZORPAY_KEY_ID,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+
+  /**
+   * Shared secret for the non-provider ("synthetic") webhook path, which
+   * has no provider signature to verify. Required in production: without
+   * it that endpoint is an unauthenticated write into any tenant, plus
+   * unbounded LLM spend. See webhooks/receiver.ts.
+   */
+  ingestApiKey: process.env.INGEST_API_KEY,
+
+  /**
+   * Set to "production" on a deployed host. Controls fail-closed
+   * behavior: unauthenticated synthetic ingest is allowed in local dev
+   * (so `npm run seed` and curl testing stay frictionless) but refused
+   * once deployed.
+   */
+  nodeEnv: withDefault("NODE_ENV", "development"),
+
+  /** Max webhook requests per IP per minute. 0 disables the limiter. */
+  webhookRateLimitPerMin: Number(withDefault("WEBHOOK_RATE_LIMIT_PER_MIN", "120")),
 };
+
+export const isProduction = env.nodeEnv === "production";

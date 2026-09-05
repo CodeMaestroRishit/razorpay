@@ -1,8 +1,7 @@
 import type { Request, Response } from "express";
 import crypto from "node:crypto";
 import { servicePool } from "../db/client.js";
-import { env } from "../config/env.js";
-import { verifyRazorpaySignature } from "./verifySignature.js";
+import { authenticateWebhook } from "./auth.js";
 import { normalizeWebhookEvent } from "../pipeline/detection.js";
 import { ingestRazorpayEvent } from "./razorpayEvents.js";
 import { runPipelineForEvent } from "../pipeline/pipeline.js";
@@ -22,12 +21,12 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
   // is not guaranteed to reproduce what was actually signed.
   const rawBody = req.rawBody?.toString("utf8") ?? JSON.stringify(req.body);
 
-  if (provider === "razorpay" && env.razorpayWebhookSecret) {
-    const signature = req.header("x-razorpay-signature");
-    if (!verifyRazorpaySignature(rawBody, signature, env.razorpayWebhookSecret)) {
-      res.status(401).json({ error: "invalid webhook signature" });
-      return;
-    }
+  // Authenticate BEFORE any row is written or any token is spent —
+  // an accepted event runs the whole pipeline, LLM call included.
+  const auth = authenticateWebhook(req, provider, rawBody);
+  if (!auth.ok) {
+    res.status(auth.status).json({ error: auth.error });
+    return;
   }
 
   // Razorpay sends a per-delivery id in this header for exactly this
