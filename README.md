@@ -1,6 +1,6 @@
-# AI Revenue Recovery
+# RazorSafe
 
-Razorpay `/buildathon` — Track 03. Implementation of the Hybrid AI Agent
+AI Revenue Recovery for Razorpay `/buildathon` — Track 03. Implementation of the Hybrid AI Agent
 architecture (Architecture D) from
 [`razorpay-revenue-recovery-architecture.md`](./razorpay-revenue-recovery-architecture.md) —
 read that doc first; this README is just "how do I run it."

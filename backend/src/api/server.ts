@@ -7,6 +7,7 @@ import { dashboardRouter } from "./routes/dashboard.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { internalRouter } from "./routes/internal.js";
 import { merchantsRouter } from "./routes/merchants.js";
+import { demoRouter } from "./routes/demo.js";
 
 const app = express();
 
@@ -57,6 +58,9 @@ app.use("/api/merchants", merchantsRouter);
 app.use("/api/cases", casesRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/internal", rateLimit({ requestsPerMinute: 30 }), internalRouter);
+// Unauthenticated by design (see demo.ts) but rate-limited hard — each
+// successful call spends two real LLM calls.
+app.use("/api/demo", rateLimit({ requestsPerMinute: 6 }), demoRouter);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error & { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

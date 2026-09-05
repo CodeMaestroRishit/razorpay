@@ -53,7 +53,7 @@ export function Landing({ onOpenConsole, onHowItWorks }: { onOpenConsole: () => 
 
         <div className="relative mx-auto max-w-lg lg:max-w-xl">
           <div className="text-xs font-semibold uppercase tracking-[0.2em] text-brand">
-            Razorpay Buildathon / Track 03 / AI Revenue Recovery
+            RazorSafe / Razorpay Buildathon / Track 03
           </div>
           <h1 className="mt-4 font-display text-5xl font-bold tracking-tight text-white sm:text-6xl">
             Recover<span className="text-brand">.</span>

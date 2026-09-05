@@ -71,6 +71,15 @@ export const api = {
   summary: (merchantId: string) => get<Summary>("/dashboard/summary", merchantId),
   cases: (merchantId: string) => get<CaseRow[]>("/cases", merchantId),
   timeline: (merchantId: string, caseId: string) => get<TimelineEntry[]>(`/cases/${caseId}/timeline`, merchantId),
+  demoTrigger: async (merchantId: string): Promise<{ caseId: string }> => {
+    const res = await fetch(`${BASE}/demo/trigger`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ merchantId }),
+    });
+    if (!res.ok) throw new Error(`demo trigger failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  },
 };
 
 /** paise -> ₹, formatted. */

@@ -36,7 +36,7 @@ export default function App() {
               R
             </div>
             <div className="text-left">
-              <div className="text-sm font-semibold tracking-tight text-ink">AI Revenue Recovery</div>
+              <div className="text-sm font-semibold tracking-tight text-ink">RazorSafe</div>
               <div className="text-[11px] text-slate-400">Razorpay Buildathon · Track 03</div>
             </div>
           </button>

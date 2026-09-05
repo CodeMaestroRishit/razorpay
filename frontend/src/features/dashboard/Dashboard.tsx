@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { api, formatInr } from "../../lib/api.js";
 import { StatTile } from "../../components/ui/StatTile.js";
+import { LiveDemo } from "./LiveDemo.js";
 
 // Validated categorical pair from the dataviz reference palette (slots 1
 // & 2) — adjacent-pair CVD Delta E 9.1 light / 8.4 dark, both clear the
@@ -35,6 +36,8 @@ export function Dashboard({ merchantId }: { merchantId: string }) {
           Revenue recovery funnel, holdout-adjusted so the number is measured, not asserted (§11).
         </p>
       </div>
+
+      <LiveDemo merchantId={merchantId} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Revenue at Risk" value={formatInr(f.revenueAtRisk)} sublabel="entered the outbox this campaign" />
