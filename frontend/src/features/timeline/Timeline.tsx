@@ -12,6 +12,20 @@ const STAGE_LABELS: Record<string, string> = {
   stop_or_escalate: "Stop / Escalate",
 };
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  hi: "Hindi",
+  hinglish: "Hinglish",
+  ta: "Tamil",
+  bn: "Bengali",
+  mr: "Marathi",
+  te: "Telugu",
+  gu: "Gujarati",
+  kn: "Kannada",
+  ml: "Malayalam",
+};
+const ENGLISH_ALIASES = new Set(["en", "eng", "english"]);
+
 function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }) {
   const [open, setOpen] = useState(false);
   const output = entry.output as { approved?: boolean; rule?: string; reason?: string } | null;
@@ -19,6 +33,17 @@ function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }
   const isGuardrailReject = isGuardrail && output?.approved === false;
   const isGuardrailPass = isGuardrail && output?.approved === true;
   const isAiStage = entry.stage === "root_cause" || entry.stage === "recommend";
+
+  const executeDetail =
+    entry.stage === "execute"
+      ? ((entry.output as { detail?: Record<string, unknown> } | null)?.detail as
+          | { language?: string; englishDraft?: string; localizedText?: string; degraded?: boolean; channel?: string }
+          | undefined)
+      : undefined;
+  const isLocalizedMessage =
+    !!executeDetail?.language &&
+    !ENGLISH_ALIASES.has(executeDetail.language.toLowerCase()) &&
+    !!executeDetail.localizedText;
 
   // Same color roles as the pipeline diagram on the marketing pages, so a
   // judge who read "how it works" recognizes them here: blue = AI-owned
@@ -55,6 +80,27 @@ function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }
       )}
       {isGuardrailPass && (
         <div className="mt-1 text-sm text-[#0ca30c]">approved — all policy checks passed</div>
+      )}
+      {isLocalizedMessage && (
+        <div className="mt-2 rounded-lg border border-brand/20 bg-brand-50 p-3">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-brand-dark">
+            <span>Localized via Sarvam</span>
+            <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] text-white">
+              {LANGUAGE_NAMES[executeDetail!.language!.toLowerCase()] ?? executeDetail!.language}
+            </span>
+            {executeDetail?.degraded && (
+              <span className="rounded-full bg-[#FFF6E0] px-2 py-0.5 text-[10px] text-[#8a6300]">fell back to English</span>
+            )}
+          </div>
+          <div className="mt-2 text-xs text-slate-500">English draft</div>
+          <div className="text-sm text-slate-600">{executeDetail?.englishDraft}</div>
+          <div className="mt-2 text-xs text-slate-500">
+            Sent {executeDetail?.channel ? `via ${executeDetail.channel}` : ""}
+          </div>
+          <div className="text-sm font-medium text-ink" lang={executeDetail?.language}>
+            {executeDetail?.localizedText}
+          </div>
+        </div>
       )}
       <button onClick={() => setOpen((o) => !o)} className="mt-1 text-xs font-medium text-brand hover:underline">
         {open ? "hide details" : "show input / output"}

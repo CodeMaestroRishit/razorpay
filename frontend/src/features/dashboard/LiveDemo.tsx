@@ -117,6 +117,7 @@ export function LiveDemo({ merchantId }: { merchantId: string }) {
   const guardrail = byStage.guardrail;
   const escalate = byStage.stop_or_escalate;
   const measure = byStage.measure;
+  const execute = byStage.execute;
 
   const detectEvent = (detect?.input as { event?: { type?: string; payload?: { amount?: number } } } | undefined)?.event;
   const rootCauseOut = rootCause?.output as { cause?: string; confidence?: number } | undefined;
@@ -124,6 +125,16 @@ export function LiveDemo({ merchantId }: { merchantId: string }) {
   const guardrailOut = guardrail?.output as { approved?: boolean; rule?: string; reason?: string } | undefined;
   const escalateOut = escalate?.output as { rule?: string } | undefined;
   const measureOut = measure?.output as { outcomeState?: string } | undefined;
+  const executeDetail = (execute?.output as { detail?: Record<string, unknown> } | undefined)?.detail as
+    | { language?: string; localizedText?: string; degraded?: boolean; channel?: string }
+    | undefined;
+
+  const ENGLISH_ALIASES = new Set(["en", "eng", "english"]);
+  const LANGUAGE_NAMES: Record<string, string> = {
+    hi: "Hindi", hinglish: "Hinglish", ta: "Tamil", bn: "Bengali", mr: "Marathi", te: "Telugu", gu: "Gujarati", kn: "Kannada", ml: "Malayalam",
+  };
+  const isSendMessage = recommendOut?.action_type === "send_message";
+  const isLocalized = !!executeDetail?.language && !ENGLISH_ALIASES.has(executeDetail.language.toLowerCase());
 
   const steps: { label: string; status: StepStatus; detail?: string }[] = [
     {
@@ -146,6 +157,21 @@ export function LiveDemo({ merchantId }: { merchantId: string }) {
       status: guardrail ? (guardrailOut?.approved ? "done" : "rejected") : recommend ? "active" : "pending",
       detail: guardrail ? (guardrailOut?.approved ? "approved — all policy checks passed" : `rejected — ${guardrailOut?.rule}`) : undefined,
     },
+    ...(guardrailOut?.approved && isSendMessage
+      ? [
+          {
+            label: "Localize (Sarvam)",
+            status: (execute ? "done" : "active") as StepStatus,
+            detail: isLocalized
+              ? executeDetail?.degraded
+                ? `attempted ${LANGUAGE_NAMES[executeDetail.language!.toLowerCase()] ?? executeDetail.language} — fell back to English`
+                : `"${executeDetail?.localizedText}" (${LANGUAGE_NAMES[executeDetail!.language!.toLowerCase()] ?? executeDetail!.language})`
+              : execute
+                ? "customer reads English — no translation needed"
+                : undefined,
+          },
+        ]
+      : []),
     guardrailOut?.approved === false
       ? { label: "Escalated to a human", status: (escalate ? "rejected" : "active") as StepStatus, detail: escalateOut ? `rule: ${escalateOut.rule}` : undefined }
       : {

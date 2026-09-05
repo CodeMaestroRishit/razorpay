@@ -92,7 +92,22 @@ export async function executeAction(params: {
          values ($1, 'send_message', 'ai', $2, $3)`,
         [params.caseCtx.case_id, sendResult.sent ? "executed" : "failed", JSON.stringify({ ...sendResult, degraded: localized.degraded, idempotencyKey })]
       );
-      return { executed: sendResult.sent, detail: { ...sendResult, degraded: localized.degraded, idempotencyKey } };
+      // channel/language/text surfaced here (not just in
+      // communication_attempts) so the Agent Timeline can show the actual
+      // Sarvam output next to the English draft it came from, instead of
+      // that translation being invisible outside the DB.
+      return {
+        executed: sendResult.sent,
+        detail: {
+          ...sendResult,
+          degraded: localized.degraded,
+          channel,
+          language,
+          englishDraft,
+          localizedText: localized.text,
+          idempotencyKey,
+        },
+      };
     }
 
     case "schedule_retry": {
