@@ -4,7 +4,14 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npm run build
+    # --include=dev overrides NODE_ENV=production for this install step.
+    # Without it, npm prunes devDependencies under NODE_ENV=production —
+    # confirmed directly (`npm install --dry-run` under that env removes
+    # typescript) — which is exactly where typescript/tsx/@types/node
+    # live, and tsc has nothing left to compile against. NODE_ENV=production
+    # still applies at runtime (npm start), which is the only place this
+    # app's own isProduction check reads it.
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     envVars:
