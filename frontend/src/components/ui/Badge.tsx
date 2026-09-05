@@ -24,7 +24,7 @@ export function StateBadge({ state }: { state: string }) {
 
 export function PlaybookBadge({ playbook }: { playbook: string }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-navy/5 px-2.5 py-1 text-xs font-medium text-navy/70">
+    <span className="inline-flex items-center rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink/70">
       {playbook.replace(/_/g, " ")}
     </span>
   );

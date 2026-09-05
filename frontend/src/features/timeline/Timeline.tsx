@@ -18,19 +18,24 @@ function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }
   const isGuardrail = entry.stage === "guardrail";
   const isGuardrailReject = isGuardrail && output?.approved === false;
   const isGuardrailPass = isGuardrail && output?.approved === true;
+  const isAiStage = entry.stage === "root_cause" || entry.stage === "recommend";
+
+  const dotStyle = isGuardrailReject
+    ? "bg-[#FBEAEA] text-[#d03b3b]"
+    : isGuardrail
+      ? "bg-gold text-ink"
+      : isAiStage
+        ? "bg-navy text-white"
+        : "bg-ink/10 text-ink";
 
   return (
     <li className="relative pb-8 pl-10">
-      <span
-        className={`absolute left-0 top-1 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${
-          isGuardrailReject ? "bg-[#FBEAEA] text-[#d03b3b]" : "bg-brand-50 text-brand-dark"
-        }`}
-      >
+      <span className={`absolute left-0 top-1 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${dotStyle}`}>
         ●
       </span>
-      <span className="absolute left-[11px] top-7 h-full w-px bg-navy/10" />
+      <span className="absolute left-[11px] top-7 h-full w-px bg-ink/10" />
       <div className="flex items-baseline justify-between gap-4">
-        <div className="font-semibold text-navy">{STAGE_LABELS[entry.stage] ?? entry.stage}</div>
+        <div className="font-semibold text-ink">{STAGE_LABELS[entry.stage] ?? entry.stage}</div>
         <div className="text-xs text-slate-400">
           {new Date(entry.created_at).toLocaleTimeString()} {entry.latency_ms ? `· ${entry.latency_ms}ms` : ""}
         </div>
@@ -48,11 +53,11 @@ function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }
       {isGuardrailPass && (
         <div className="mt-1 text-sm text-[#0ca30c]">approved — all policy checks passed</div>
       )}
-      <button onClick={() => setOpen((o) => !o)} className="mt-1 text-xs font-medium text-brand-dark hover:underline">
+      <button onClick={() => setOpen((o) => !o)} className="mt-1 text-xs font-medium text-gold-dark hover:underline">
         {open ? "hide details" : "show input / output"}
       </button>
       {open && (
-        <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-navy-950 p-3 text-xs text-slate-100">
+        <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-ink-900 p-3 text-xs text-slate-100">
           {JSON.stringify({ input: entry.input, output: entry.output, model: entry.model }, null, 2)}
         </pre>
       )}
@@ -67,10 +72,10 @@ export function Timeline({ merchantId, caseId, onClose }: { merchantId: string; 
   });
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-navy/30" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-ink/30" onClick={onClose}>
       <div className="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-navy">Agent Timeline</h2>
+          <h2 className="font-display text-xl font-bold text-ink">Agent Timeline</h2>
           <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100" aria-label="Close">
             ✕
           </button>

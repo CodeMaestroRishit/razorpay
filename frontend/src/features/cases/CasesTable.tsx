@@ -13,13 +13,13 @@ export function CasesTable({ merchantId, onSelect }: { merchantId: string; onSel
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-extrabold tracking-tight text-navy">Recovery Cases</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Recovery Cases</h1>
         <p className="mt-1 text-slate-500">Click a row to open its Agent Timeline — the audit trail, in detail.</p>
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-navy/5 bg-white shadow-card">
+      <div className="overflow-x-auto rounded-2xl border border-ink/10 bg-white shadow-card">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-navy/5 text-xs uppercase tracking-wide text-slate-400">
+            <tr className="border-b border-ink/10 text-xs uppercase tracking-wide text-slate-400">
               <th className="px-5 py-3 font-medium">Customer</th>
               <th className="px-5 py-3 font-medium">Playbook</th>
               <th className="px-5 py-3 font-medium">State</th>
@@ -34,10 +34,10 @@ export function CasesTable({ merchantId, onSelect }: { merchantId: string; onSel
               <tr
                 key={c.id}
                 onClick={() => onSelect(c.id)}
-                className="cursor-pointer border-b border-navy/5 last:border-0 hover:bg-brand-50/50"
+                className="cursor-pointer border-b border-ink/10 last:border-0 hover:bg-gold-50/70"
               >
                 <td className="px-5 py-3">
-                  <div className="font-medium text-navy">{c.customer_name}</div>
+                  <div className="font-medium text-ink">{c.customer_name}</div>
                   <div className="text-xs text-slate-400">{c.email ?? c.phone}</div>
                 </td>
                 <td className="px-5 py-3">
@@ -46,7 +46,7 @@ export function CasesTable({ merchantId, onSelect }: { merchantId: string; onSel
                 <td className="px-5 py-3">
                   <StateBadge state={c.state} />
                 </td>
-                <td className="tabular px-5 py-3 font-medium text-navy">{formatInr(Number(c.amount))}</td>
+                <td className="tabular px-5 py-3 font-medium text-ink">{formatInr(Number(c.amount))}</td>
                 <td className="tabular px-5 py-3 text-slate-500">
                   {c.risk_score ? Number(c.risk_score).toFixed(2) : "—"}
                 </td>

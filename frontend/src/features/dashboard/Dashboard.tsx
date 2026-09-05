@@ -30,7 +30,7 @@ export function Dashboard({ merchantId }: { merchantId: string }) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-navy">Executive Dashboard</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Executive Dashboard</h1>
         <p className="mt-1 text-slate-500">
           Revenue recovery funnel, holdout-adjusted so the number is measured, not asserted (§11).
         </p>
@@ -61,8 +61,8 @@ export function Dashboard({ merchantId }: { merchantId: string }) {
         />
       </div>
 
-      <div className="rounded-2xl border border-navy/5 bg-white p-6 shadow-card">
-        <h2 className="text-lg font-semibold text-navy">Recovery rate: treated vs holdout</h2>
+      <div className="rounded-2xl border border-ink/10 bg-white p-6 shadow-card">
+        <h2 className="text-lg font-semibold text-ink">Recovery rate: treated vs holdout</h2>
         <p className="mt-1 text-sm text-slate-500">
           The gap between these two bars is the agent's actual, measured effect — everything else is uplift the
           business would have gotten anyway.

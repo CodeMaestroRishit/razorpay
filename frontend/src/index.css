@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-  @apply bg-[#F7F9FC] text-navy font-sans antialiased;
+  @apply bg-[#FAF8F5] text-ink font-sans antialiased;
 }
 
 .tabular {
