@@ -47,28 +47,44 @@ function isEnglish(language: string): boolean {
   return ENGLISH_ALIASES.has(language.trim().toLowerCase());
 }
 
+/**
+ * Sarvam's translate endpoint takes region-suffixed codes (`ta-IN`, not
+ * `ta`) — customers.language_pref stores bare codes, so this is where
+ * that gap gets closed. 'hinglish' isn't a real target language, it's a
+ * request for Hindi rendered in `code-mixed` mode (Sarvam's own name for
+ * what most people mean by "Hinglish"); everything else maps straight
+ * through as `${code}-IN` with `modern-colloquial` mode, which is what
+ * keeps English loanwords (amount, subscription, retry) sitting naturally
+ * inside the native-script sentence instead of forcing a stiff, fully
+ * literary translation.
+ */
+function toSarvamTarget(language: string): { targetLanguageCode: string; mode: "code-mixed" | "modern-colloquial" } {
+  if (language.trim().toLowerCase() === "hinglish") {
+    return { targetLanguageCode: "hi-IN", mode: "code-mixed" };
+  }
+  return { targetLanguageCode: `${language.trim().toLowerCase()}-IN`, mode: "modern-colloquial" };
+}
+
 class LiveSarvamAdapter implements SarvamAdapter {
   private headers = { "api-subscription-key": env.sarvamApiKey!, "Content-Type": "application/json" };
 
-  async generateLocalizedMessage(englishDraft: string, language: string, tone?: string) {
+  async generateLocalizedMessage(englishDraft: string, language: string, _tone?: string) {
     if (isEnglish(language)) return { text: englishDraft, degraded: false };
-    const res = await fetch(`${SARVAM_BASE_URL}/chat/completions`, {
+    const { targetLanguageCode, mode } = toSarvamTarget(language);
+    const res = await fetch(`${SARVAM_BASE_URL}/translate`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify({
-        messages: [
-          {
-            role: "system",
-            content: `Rewrite the following message naturally in ${language}, matching a ${tone ?? "polite"} tone. Keep it short, code-mixed where natural (Hinglish, not stiff literary translation).`,
-          },
-          { role: "user", content: englishDraft },
-        ],
+        input: englishDraft,
+        source_language_code: "en-IN",
+        target_language_code: targetLanguageCode,
+        model: "mayura:v1",
+        mode,
       }),
     });
     if (!res.ok) return { text: englishDraft, degraded: true };
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const text = data.choices?.[0]?.message?.content;
-    return text ? { text, degraded: false } : { text: englishDraft, degraded: true };
+    const data = (await res.json()) as { translated_text?: string };
+    return data.translated_text ? { text: data.translated_text, degraded: false } : { text: englishDraft, degraded: true };
   }
 
   async transcribeCodemix(audioRef: string) {
@@ -106,7 +122,7 @@ class LiveSarvamAdapter implements SarvamAdapter {
   }
 }
 
-class MockSarvamAdapter implements SarvamAdapter {
+export class MockSarvamAdapter implements SarvamAdapter {
   async generateLocalizedMessage(englishDraft: string, language: string) {
     if (isEnglish(language)) return { text: englishDraft, degraded: false };
     // Degraded mode: English template, flagged — not a silent failure (§4, §8).

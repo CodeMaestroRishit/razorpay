@@ -32,9 +32,7 @@ export default function App() {
       <header className="sticky top-0 z-30 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <button onClick={() => setView("landing")} className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand font-display font-bold text-white">
-              R
-            </div>
+            <img src="/logo-shield.png" alt="RazorSafe" className="h-9 w-auto" />
             <div className="text-left">
               <div className="text-sm font-semibold tracking-tight text-ink">RazorSafe</div>
               <div className="text-[11px] text-slate-400">Razorpay Buildathon · Track 03</div>
@@ -74,7 +72,10 @@ export default function App() {
             ) : (
               <>
                 <div className="mb-6 flex justify-end">
-                  <button onClick={clearMerchant} className="text-xs text-slate-400 hover:text-brand">
+                  <button
+                    onClick={clearMerchant}
+                    className="rounded-full border border-ink/10 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition hover:border-brand hover:text-brand"
+                  >
                     switch merchant ({merchantId.slice(0, 8)}…)
                   </button>
                 </div>

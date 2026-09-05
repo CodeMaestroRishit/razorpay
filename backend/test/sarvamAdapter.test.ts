@@ -1,8 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { createSarvamAdapter } from "../src/adapters/sarvam.js";
+import { MockSarvamAdapter } from "../src/adapters/sarvam.js";
 
-/** No SARVAM_API_KEY in the vitest env, so this exercises the mock adapter. */
-const adapter = createSarvamAdapter();
+/**
+ * Constructed directly rather than via createSarvamAdapter(), which picks
+ * Live vs Mock off `env.sarvamApiKey` — a real key in a developer's local
+ * .env would otherwise make this "unit" test silently fire real, billed
+ * network calls, exactly the ambient-environment coupling that bit
+ * env.test.ts previously. This suite is about the English-detection
+ * branch, not about the live adapter, so it names the mock explicitly.
+ */
+const adapter = new MockSarvamAdapter();
 
 describe("sarvam adapter — English-detection is not just an exact 'en' match", () => {
   it("does not flag English content as degraded for the ISO code", async () => {
