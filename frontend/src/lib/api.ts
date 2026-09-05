@@ -6,6 +6,13 @@
  */
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
+export interface Merchant {
+  id: string;
+  name: string;
+  case_count: number;
+  latest_activity: string | null;
+}
+
 export interface Funnel {
   revenueAtRisk: number;
   grossRecovered: number;
@@ -54,6 +61,12 @@ async function get<T>(path: string, merchantId: string): Promise<T> {
 }
 
 export const api = {
+  merchants: async (): Promise<Merchant[]> => {
+    // No merchant header — this is the endpoint you call BEFORE you have one.
+    const res = await fetch(`${BASE}/merchants`);
+    if (!res.ok) throw new Error(`/merchants failed: ${res.status}`);
+    return res.json();
+  },
   funnel: (merchantId: string) => get<Funnel>("/dashboard/funnel", merchantId),
   summary: (merchantId: string) => get<Summary>("/dashboard/summary", merchantId),
   cases: (merchantId: string) => get<CaseRow[]>("/cases", merchantId),

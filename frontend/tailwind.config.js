@@ -4,32 +4,36 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ink: the premium near-black base for hero/CTA panels and the
-        // app shell. gold: the one accent color — used deliberately
-        // sparingly (headline emphasis, primary CTAs, key numbers) so it
-        // still reads as an accent, not wallpaper.
+        // ink: the dark hero/CTA-panel base — a deep blue-black rather
+        // than neutral black, so it reads as part of the same blue family
+        // as `brand` instead of a competing near-black. Razorpay's own
+        // site does exactly this for its AI section (a black "Vulcan"
+        // banner with blue circuitry) — dark surface, blue accent.
         ink: {
-          DEFAULT: "#111113",
-          900: "#0B0B0D",
-          800: "#1A1A1D",
+          DEFAULT: "#0B0F2E",
+          900: "#070A1F",
+          800: "#141A45",
         },
-        gold: {
-          DEFAULT: "#C9A24B",
-          light: "#E8C878",
-          dark: "#A9832E",
-          50: "#FBF6EA",
-        },
-        // Razorpay blue survives as a secondary accent — used for links,
-        // interactive states, and the "treated" data series — a quiet nod
-        // to the platform this was built for without literal branding.
+        // brand: Razorpay's own blue — now the PRIMARY accent (headline
+        // emphasis, CTAs, links, the "treated" data series), not a quiet
+        // secondary nod.
         brand: {
-          DEFAULT: "#3395FF",
-          dark: "#1A73E8",
-          50: "#EAF3FF",
+          DEFAULT: "#3D5AFE",
+          dark: "#2541C7",
+          50: "#EEF1FF",
         },
-        navy: {
-          DEFAULT: "#0A2540",
-          950: "#071B30",
+        // accent: a warm coral, blue's complement — reserved for the
+        // handful of moments that should visually interrupt the blue
+        // (the guardrail — literally the one thing that can say no — and
+        // the incremental-recovery number). Close kin to the dataviz
+        // reference palette's validated "holdout" orange, so the same
+        // warm tone means roughly the same thing in the chart and in the
+        // chrome around it.
+        accent: {
+          DEFAULT: "#FF6B4A",
+          light: "#FF9B7A",
+          dark: "#C13F1F",
+          50: "#FFF1EC",
         },
       },
       fontFamily: {

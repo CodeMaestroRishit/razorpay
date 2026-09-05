@@ -20,12 +20,15 @@ function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }
   const isGuardrailPass = isGuardrail && output?.approved === true;
   const isAiStage = entry.stage === "root_cause" || entry.stage === "recommend";
 
+  // Same color roles as the pipeline diagram on the marketing pages, so a
+  // judge who read "how it works" recognizes them here: blue = AI-owned
+  // stage, coral = the guardrail, neutral = deterministic plumbing.
   const dotStyle = isGuardrailReject
     ? "bg-[#FBEAEA] text-[#d03b3b]"
     : isGuardrail
-      ? "bg-gold text-ink"
+      ? "bg-accent text-white"
       : isAiStage
-        ? "bg-navy text-white"
+        ? "bg-brand text-white"
         : "bg-ink/10 text-ink";
 
   return (
@@ -53,7 +56,7 @@ function StageRow({ entry }: { entry: import("../../lib/api.js").TimelineEntry }
       {isGuardrailPass && (
         <div className="mt-1 text-sm text-[#0ca30c]">approved — all policy checks passed</div>
       )}
-      <button onClick={() => setOpen((o) => !o)} className="mt-1 text-xs font-medium text-gold-dark hover:underline">
+      <button onClick={() => setOpen((o) => !o)} className="mt-1 text-xs font-medium text-brand hover:underline">
         {open ? "hide details" : "show input / output"}
       </button>
       {open && (

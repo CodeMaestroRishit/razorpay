@@ -34,7 +34,7 @@ export function CasesTable({ merchantId, onSelect }: { merchantId: string; onSel
               <tr
                 key={c.id}
                 onClick={() => onSelect(c.id)}
-                className="cursor-pointer border-b border-ink/10 last:border-0 hover:bg-gold-50/70"
+                className="cursor-pointer border-b border-ink/10 last:border-0 hover:bg-brand-50"
               >
                 <td className="px-5 py-3">
                   <div className="font-medium text-ink">{c.customer_name}</div>

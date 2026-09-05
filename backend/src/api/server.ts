@@ -6,6 +6,7 @@ import { casesRouter } from "./routes/cases.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { internalRouter } from "./routes/internal.js";
+import { merchantsRouter } from "./routes/merchants.js";
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.get("/", (_req, res) =>
 // Every accepted webhook runs the full pipeline including a paid LLM
 // call, so this limit is a cost control as much as a load one (§13).
 app.use("/webhooks", rateLimit({ requestsPerMinute: env.webhookRateLimitPerMin }), webhooksRouter);
+app.use("/api/merchants", merchantsRouter);
 app.use("/api/cases", casesRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/internal", rateLimit({ requestsPerMinute: 30 }), internalRouter);

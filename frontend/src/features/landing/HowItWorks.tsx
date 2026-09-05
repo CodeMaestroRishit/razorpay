@@ -21,7 +21,7 @@ const GUARDRAIL_RULES: Array<{ n: number; rule: string; what: string }> = [
 export function HowItWorks() {
   return (
     <div className="mx-auto max-w-5xl px-6 py-12">
-      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gold-dark">Transparency</div>
+      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-brand">Transparency</div>
       <h1 className="mt-3 font-display text-4xl font-bold text-ink sm:text-5xl">
         The AI proposes. The guardrail decides.
       </h1>
@@ -56,7 +56,7 @@ export function HowItWorks() {
                 <tr key={r.rule} className="border-b border-ink/5 last:border-0">
                   <td className="px-4 py-3 tabular text-slate-400">{r.n}</td>
                   <td className="px-4 py-3">
-                    <code className="rounded bg-gold-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-gold-dark">
+                    <code className="rounded bg-accent-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-accent-dark">
                       {r.rule}
                     </code>
                   </td>

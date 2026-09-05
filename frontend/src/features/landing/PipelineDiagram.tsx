@@ -9,7 +9,20 @@ import {
   IconLedger,
 } from "../../components/ui/icons.js";
 
-type Owner = "code" | "AI";
+/**
+ * Three roles, three colors, used identically here, in the teaser, and on
+ * a real case's Agent Timeline: blue = the model proposes, coral = the
+ * guardrail (the one stage that can refuse), neutral = deterministic
+ * plumbing. The guardrail is "code" in the ownership sense, but giving it
+ * its own role is the whole point of the diagram.
+ */
+type Owner = "code" | "AI" | "guardrail";
+
+const OWNER_STYLES: Record<Owner, { dot: string; badge: string; label: string }> = {
+  AI: { dot: "bg-brand text-white", badge: "bg-brand/10 text-brand", label: "AI proposes" },
+  guardrail: { dot: "bg-accent text-white", badge: "bg-accent/15 text-accent-dark", label: "can say no" },
+  code: { dot: "bg-ink/10 text-ink", badge: "bg-ink/10 text-ink/70", label: "deterministic" },
+};
 
 function StepRow({
   icon,
@@ -27,22 +40,16 @@ function StepRow({
   return (
     <li className="relative flex gap-4 pb-8 pl-1 last:pb-0">
       {!last && <span className="absolute left-[19px] top-10 h-[calc(100%-1.5rem)] w-px bg-ink/10" />}
-      <div
-        className={`z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-          owner === "AI" ? "bg-navy text-white" : "bg-gold text-ink"
-        }`}
-      >
+      <div className={`z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${OWNER_STYLES[owner].dot}`}>
         {icon}
       </div>
       <div>
         <div className="flex items-center gap-2">
           <span className="font-semibold text-ink">{title}</span>
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-              owner === "AI" ? "bg-navy/10 text-navy" : "bg-gold/20 text-gold-dark"
-            }`}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${OWNER_STYLES[owner].badge}`}
           >
-            {owner === "AI" ? "AI proposes" : "deterministic"}
+            {OWNER_STYLES[owner].label}
           </span>
         </div>
         <p className="mt-1 text-sm text-slate-500">{detail}</p>
@@ -63,7 +70,7 @@ export function PipelineDiagram({ compact = false }: { compact?: boolean }) {
       <ol className="p-3">
         <StepRow icon={<IconRadar />} owner="code" title="Detect" detail="A webhook lands; risk is scored by a fixed formula, not a model." />
         <StepRow icon={<IconBrain />} owner="AI" title="Diagnose & recommend" detail="The reasoning model proposes one action — structured JSON, never free text." />
-        <StepRow icon={<IconShield />} owner="code" title="Guardrail" detail="15 named rules evaluate the proposal. No model call inside this file." />
+        <StepRow icon={<IconShield />} owner="guardrail" title="Guardrail" detail="15 named rules evaluate the proposal. No model call inside this file." />
         <StepRow icon={<IconLedger />} owner="code" title="Execute & audit" detail="Approved actions run once, idempotently, and every stage is logged." last />
       </ol>
     );
@@ -79,9 +86,9 @@ export function PipelineDiagram({ compact = false }: { compact?: boolean }) {
       </ol>
 
       <div className="lg:col-span-3">
-        <div className="rounded-2xl border-2 border-gold bg-gold-50 p-5">
+        <div className="rounded-2xl border-2 border-accent bg-accent-50 p-5">
           <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold text-ink">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-white">
               <IconShield />
             </div>
             <div className="font-bold text-ink">5. Guardrail — the actual security boundary</div>
