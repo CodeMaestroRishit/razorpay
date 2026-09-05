@@ -21,6 +21,17 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
+// This is an API-only service — visiting the bare root in a browser (e.g.
+// clicking the deploy URL on a host's dashboard) is a normal sanity check,
+// not a real client. Answer it usefully instead of a bare 404.
+app.get("/", (_req, res) =>
+  res.json({
+    service: "ai-revenue-recovery-backend",
+    status: "ok",
+    endpoints: ["/health", "/webhooks/:provider", "/api/cases", "/api/dashboard/funnel", "/api/dashboard/summary"],
+  })
+);
+
 app.use("/webhooks", webhooksRouter);
 app.use("/api/cases", casesRouter);
 app.use("/api/dashboard", dashboardRouter);
