@@ -1,7 +1,13 @@
 import "dotenv/config";
 
-function required(name: string, fallback: string): string {
-  return process.env[name] ?? fallback;
+// `??` only falls back on null/undefined — an env var present but set to
+// "" (e.g. a blank OPENAI_MODEL= line left in .env) is neither, so `??`
+// would pass the empty string straight through instead of the default.
+// This treats "unset" and "blank" the same, which is what every caller
+// below actually wants.
+function withDefault(name: string, fallback: string): string {
+  const value = process.env[name];
+  return value && value.length > 0 ? value : fallback;
 }
 
 export const env = {
@@ -15,12 +21,12 @@ export const env = {
     .filter(Boolean),
 
   // Service connection: bypasses RLS, used by the pipeline itself.
-  serviceDatabaseUrl: required(
+  serviceDatabaseUrl: withDefault(
     "SERVICE_DATABASE_URL",
     "postgres://recovery_service:recovery_service@localhost:5432/revenue_recovery"
   ),
   // App connection: RLS-enforced, stands in for a Supabase anon-key client.
-  appDatabaseUrl: required(
+  appDatabaseUrl: withDefault(
     "APP_DATABASE_URL",
     "postgres://recovery_app:recovery_app@localhost:5432/revenue_recovery"
   ),
@@ -33,7 +39,7 @@ export const env = {
   // Overridable since model availability varies by account; see
   // adapters/llm.ts for what this needs to support (structured JSON output
   // via chat.completions.parse + zodResponseFormat).
-  openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.5",
+  openaiModel: withDefault("OPENAI_MODEL", "gpt-5.5"),
   sarvamApiKey: process.env.SARVAM_API_KEY,
   razorpayKeyId: process.env.RAZORPAY_KEY_ID,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,

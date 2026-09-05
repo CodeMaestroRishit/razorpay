@@ -17,7 +17,17 @@ app.use(
       : {}
   )
 );
-app.use(express.json());
+// Capture the exact raw bytes before parsing. Razorpay signs the wire
+// payload, not any re-serialization of it — JSON.stringify(req.body) can
+// diverge from what was actually sent (key order, number formatting), so
+// verifying against anything other than these raw bytes is unreliable.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request).rawBody = buf;
+    },
+  })
+);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

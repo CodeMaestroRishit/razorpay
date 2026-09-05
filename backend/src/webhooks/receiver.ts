@@ -4,6 +4,7 @@ import { servicePool } from "../db/client.js";
 import { env } from "../config/env.js";
 import { verifyRazorpaySignature } from "./verifySignature.js";
 import { normalizeWebhookEvent } from "../pipeline/detection.js";
+import { ingestRazorpayEvent } from "./razorpayEvents.js";
 import { runPipelineForEvent } from "../pipeline/pipeline.js";
 
 /**
@@ -15,7 +16,11 @@ import { runPipelineForEvent } from "../pipeline/pipeline.js";
  */
 export async function handleWebhook(req: Request, res: Response): Promise<void> {
   const provider = (req.params.provider as string) ?? "synthetic";
-  const rawBody = JSON.stringify(req.body);
+
+  // Signed against the exact bytes Razorpay sent (captured by the
+  // express.json verify hook in api/server.ts) — re-serializing req.body
+  // is not guaranteed to reproduce what was actually signed.
+  const rawBody = req.rawBody?.toString("utf8") ?? JSON.stringify(req.body);
 
   if (provider === "razorpay" && env.razorpayWebhookSecret) {
     const signature = req.header("x-razorpay-signature");
@@ -25,7 +30,14 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
     }
   }
 
-  const providerEventId = (req.body.event_id as string) ?? crypto.randomUUID();
+  // Razorpay sends a per-delivery id in this header for exactly this
+  // purpose. Falling back to a body field id (synthetic events) or, last,
+  // a hash of the body itself — content-based, so a byte-identical
+  // redelivery with no header still dedupes instead of minting a new row.
+  const providerEventId =
+    req.header("x-razorpay-event-id") ??
+    (req.body.event_id as string | undefined) ??
+    crypto.createHash("sha256").update(rawBody).digest("hex");
 
   const { rows, rowCount } = await servicePool.query<{ id: string }>(
     `insert into webhook_events (provider, provider_event_id, payload)
@@ -47,8 +59,9 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
   // fast — mirrors "backend subscribes to outbox inserts" from §7,
   // simplified to an in-process call for the hackathon build instead of
   // a separate poller process.
-  const eventId = await normalizeWebhookEvent(webhookEventId).catch((err) => {
-    console.error("normalizeWebhookEvent failed", err);
+  const normalize = provider === "razorpay" ? ingestRazorpayEvent : normalizeWebhookEvent;
+  const eventId = await normalize(webhookEventId).catch((err) => {
+    console.error(`${provider} event normalization failed`, err);
     return null;
   });
   if (eventId) {

@@ -62,12 +62,19 @@ export async function executeAction(params: {
         ? params.customerContact.phone
         : params.customerContact.email;
 
+      // The customer's stored language_pref is authoritative, not the
+      // model's own guess (§8: language_pref "drives Sarvam routing"). The
+      // reasoning LLM has no reliable signal about which language a
+      // customer actually reads, and its free-text field isn't
+      // constrained to a code — a genuine run returned "English" here,
+      // which doesn't match the "en" check downstream and triggered a
+      // pointless (and failing) translation of already-English text.
+      // action.language is a fallback only for the case where the
+      // customer record somehow has none (language_pref is NOT NULL with
+      // a default, so in practice this fallback is never reached).
+      const language = params.customerContact.language_pref || params.action.language || "en";
       const englishDraft = params.action.message_draft ?? "";
-      const localized = await params.sarvam.generateLocalizedMessage(
-        englishDraft,
-        params.action.language ?? params.customerContact.language_pref,
-        params.action.tone
-      );
+      const localized = await params.sarvam.generateLocalizedMessage(englishDraft, language, params.action.tone);
 
       const sendResult = to
         ? await params.messaging.send({ channel, to, text: localized.text })
@@ -78,7 +85,7 @@ export async function executeAction(params: {
       await db.query(
         `insert into communication_attempts (case_id, channel, language, message_text, cooldown_until)
          values ($1, $2, $3, $4, $5)`,
-        [params.caseCtx.case_id, channel, params.action.language ?? "en", localized.text, cooldownUntil.toISOString()]
+        [params.caseCtx.case_id, channel, language, localized.text, cooldownUntil.toISOString()]
       );
       await db.query(
         `insert into recovery_actions (case_id, action_type, proposed_by, status, payload)

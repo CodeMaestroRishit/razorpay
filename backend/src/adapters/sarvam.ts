@@ -20,11 +20,24 @@ export interface SarvamAdapter {
 
 const SARVAM_BASE_URL = "https://api.sarvam.ai";
 
+/**
+ * The `language` argument nominally carries an ISO-ish code (§8's
+ * `language_pref` column stores "en"/"hi"/"hinglish"), but it can also
+ * carry the reasoning LLM's free-text guess if a caller ever passes that
+ * through unchecked. Defense in depth: recognize the common ways
+ * "English" gets spelled before deciding whether translation is needed at
+ * all, rather than only matching the exact string "en".
+ */
+const ENGLISH_ALIASES = new Set(["en", "eng", "english", "en-us", "en-in", "en-gb"]);
+function isEnglish(language: string): boolean {
+  return ENGLISH_ALIASES.has(language.trim().toLowerCase());
+}
+
 class LiveSarvamAdapter implements SarvamAdapter {
   private headers = { "api-subscription-key": env.sarvamApiKey!, "Content-Type": "application/json" };
 
   async generateLocalizedMessage(englishDraft: string, language: string, tone?: string) {
-    if (language === "en") return { text: englishDraft, degraded: false };
+    if (isEnglish(language)) return { text: englishDraft, degraded: false };
     const res = await fetch(`${SARVAM_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: this.headers,
@@ -81,7 +94,7 @@ class LiveSarvamAdapter implements SarvamAdapter {
 
 class MockSarvamAdapter implements SarvamAdapter {
   async generateLocalizedMessage(englishDraft: string, language: string) {
-    if (language === "en") return { text: englishDraft, degraded: false };
+    if (isEnglish(language)) return { text: englishDraft, degraded: false };
     // Degraded mode: English template, flagged — not a silent failure (§4, §8).
     return { text: englishDraft, degraded: true };
   }
